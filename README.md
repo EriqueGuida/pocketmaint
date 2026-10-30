@@ -45,7 +45,7 @@ A transformação deste diretório será realizada em milestones sequenciais, on
 
 - **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
 - **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
-- **[ ] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
+- **[x] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
 - **[ ] Milestone 3:** Máquina de estados (5 estados), regras de negócio (`BR-001` a `BR-008`) e `AuditService` transacional.
 - **[ ] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
 - **[ ] Milestone 5:** Padronização RFC 9457 (`GlobalExceptionHandler`), `/api/v1/health` e endpoints de técnico (`/me/orders`, `/start`, `/complete`).
@@ -104,21 +104,26 @@ A API estará acessível em: `http://localhost:9090`
 
 ---
 
-## 5. Rotas Legadas Disponíveis no Baseline
+## 5. Rotas Disponíveis na Milestone 2 (Padronizadas em Inglês)
 
-* `POST /setores` — Cadastra setor
-* `GET /setores` — Lista todos os setores
-* `GET /setores/{id}` — Busca setor por ID
-* `PUT /setores/{id}` — Atualiza setor
-* `DELETE /setores/{id}` — Exclui setor
-* `POST /equipamentos` — Cadastra equipamento
-* `GET /equipamentos` — Lista todos os equipamentos
-* `GET /equipamentos/{id}` — Busca equipamento por ID
-* `GET /equipamentos/setor/{setorId}` — Lista equipamentos de um setor
-* `PUT /equipamentos/{id}` — Atualiza equipamento
-* `DELETE /equipamentos/{id}` — Exclui equipamento
-* `POST /ordens-servico` — Cadastra nova ordem
-* `GET /ordens-servico` — Lista todas as ordens
-* `GET /ordens-servico/{id}` — Busca ordem por ID
-* `GET /ordens-servico/abertas` — Lista ordens com fechamento nulo
-* `PATCH /ordens-servico/{id}/encerramento` — Encerra a ordem gravando a solução
+### Setores (`/api/v1/sectors`):
+* `POST /api/v1/sectors` — Cadastra setor (`code`, `name`, `description`)
+* `GET /api/v1/sectors` — Lista setores ativos
+* `GET /api/v1/sectors/{id}` — Busca setor por ID
+* `PUT /api/v1/sectors/{id}` — Atualiza dados do setor
+* `DELETE /api/v1/sectors/{id}` — Inativa setor (exclusão lógica)
+
+### Equipamentos (`/api/v1/equipments`):
+* `POST /api/v1/equipments` — Cadastra equipamento (`assetTag`, `name`, `model`, `serialNumber`, `sectorId`)
+* `GET /api/v1/equipments` — Lista equipamentos ativos
+* `GET /api/v1/equipments/{id}` — Busca equipamento por ID
+* `GET /api/v1/equipments/sector/{sectorId}` — Lista equipamentos por setor
+* `PUT /api/v1/equipments/{id}` — Atualiza equipamento
+* `DELETE /api/v1/equipments/{id}` — Inativa equipamento (exclusão lógica)
+
+### Ordens de Serviço (`/api/v1/orders`):
+* `POST /api/v1/orders` — Cria nova ordem vinculada a equipamento (`title`, `problemDescription`, `priority`)
+* `GET /api/v1/orders` — Lista todas as ordens
+* `GET /api/v1/orders/{id}` — Busca ordem por ID
+* `GET /api/v1/orders/open` — Lista ordens no estado `OPEN`
+* `PATCH /api/v1/orders/{id}/complete` — Conclui a ordem com a solução executada
