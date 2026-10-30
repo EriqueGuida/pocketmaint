@@ -1,0 +1,107 @@
+# PocketMaint — Backend de Ordens de Serviço de Manutenção
+
+> 📌 **Status do Repositório — Milestone 0: Ponto de Partida Legado (Baseline)**  
+> **Tag:** `v0.0.0-baseline-legado`  
+> Este commit registra o código original herdado de um projeto acadêmico do SENAI antes do início do processo de refatoração incremental para o padrão arquitetural do **PocketMaint**.
+
+---
+
+## 1. Sobre o Projeto
+
+O **PocketMaint** é um sistema transacional de gerenciamento de ordens de serviço de manutenção técnica, projetado para operar com autoridade única sobre regras de negócio, máquina de estados estrita, autenticação por perfil (RBAC), controle anti-IDOR e trilha imutável de auditoria.
+
+O desenvolvimento deste backend foi concebido como um caso prático de engenharia de software e refatoração evolutiva: partir de uma base acadêmica simples e transformá-la, passo a passo e com histórico auditável de commits, em uma API robusta e alinhada à especificação técnica oficial (`SPECIFICATION.md`).
+
+---
+
+## 2. Diagnóstico do Baseline (Situação no Commit 0)
+
+O estado atual deste repositório representa o código funcional herdado do projeto do SENAI (`aberturaordensservico`). 
+
+### O que já está presente no código:
+- **Setores:** Cadastro, consulta por ID, listagem, atualização e exclusão física.
+- **Equipamentos:** Cadastro vinculado a setor, listagem geral, consulta por setor, atualização e exclusão física.
+- **Ordens de Serviço (Básico):** Cadastro de ordem (descrição e equipamento), consulta por ID, listagem de abertas e encerramento (gravando data de fechamento e texto de solução).
+- **Stack Base:** Java 17, Spring Boot, Spring Data JPA, Hibernate, Bean Validation e MySQL.
+
+### Gaps identificados em relação à especificação do PocketMaint:
+| Área / Funcionalidade | Situação no Baseline (Commit 0) | Requisito Alvo (PocketMaint) |
+| :--- | :--- | :--- |
+| **Máquina de Estados** | Binária (`aberta` se `dataFechamento == null`, ou `encerrada`) | 5 estados formais: `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` |
+| **Segurança e Acesso** | Nenhuma autenticação ou controle de perfil | Spring Security, JWT (Bearer Token), perfis `ADMIN`, `SUPERVISOR`, `TECHNICIAN` |
+| **Controle Anti-IDOR** | Qualquer cliente pode manipular qualquer ordem | Validação de posse: técnico só opera ordens atribuídas a ele |
+| **Modelo de Domínio** | Apenas `Setor`, `Equipamento` e `OrdemServico` simples | Inclusão de `User`, `OrderAssignment` e `AuditEvent` |
+| **Auditoria** | Inexistente | Trilha imutável em `audit_events` na mesma transação `@Transactional` |
+| **Esquema de Banco** | `ddl-auto: update` (criação automática de tabelas) | Migrações SQL versionadas via Flyway (`V1`, `V2`) |
+| **Contratos de API** | Rotas sem versionamento (`/ordens-servico`, etc.) e erros crus | Prefixo `/api/v1/...` e tratamento de erros padronizado via RFC 9457 |
+| **Integridade de Dados** | Exclusão física (`DELETE`) em setores e equipamentos | Exclusão lógica (`active = false`) para manter integridade relacional |
+| **Concorrência** | Sem controle de versão | Concorrência otimista com `@Version` em `ServiceOrder` |
+
+---
+
+## 3. Roteiro Incremental de Milestones (Plano de Commits)
+
+A transformação deste diretório será realizada em milestones sequenciais, onde cada etapa representa um commit específico:
+
+- **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
+- **[ ] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
+- **[ ] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
+- **[ ] Milestone 3:** Máquina de estados (5 estados), regras de negócio (`BR-001` a `BR-008`) e `AuditService` transacional.
+- **[ ] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
+- **[ ] Milestone 5:** Padronização RFC 9457 (`GlobalExceptionHandler`), `/api/v1/health` e endpoints de técnico (`/me/orders`, `/start`, `/complete`).
+- **[ ] Milestone 6:** Endpoints de supervisor/admin (criação, atribuição, cancelamento, auditoria e gestão de ativos com exclusão lógica).
+- **[ ] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento do backend. *(Tag: `v1.0.0-backend`)*
+
+---
+
+## 4. Como Executar o Projeto no Estado Atual (Baseline)
+
+### Pré-requisitos:
+* **Java Development Kit (JDK):** Versão 17 LTS instalada e configurada no `PATH`.
+* **Banco de Dados:** Servidor MySQL rodando localmente na porta `3306`.
+* **Base de dados criada:**
+  ```sql
+  CREATE DATABASE ordens_servico;
+  ```
+
+### Configuração:
+Verifique as credenciais no arquivo `src/main/resources/application.properties`:
+```properties
+spring.datasource.url = jdbc:mysql://localhost:3306/ordens_servico
+spring.datasource.username = root
+spring.datasource.password = 
+server.port = 9090
+```
+
+### Inicialização via Maven Wrapper:
+No terminal do projeto:
+```bash
+# Windows
+.\mvnw.cmd spring-boot:run
+
+# Linux / macOS
+./mvnw spring-boot:run
+```
+
+A API estará acessível em: `http://localhost:9090`
+
+---
+
+## 5. Rotas Legadas Disponíveis no Baseline
+
+* `POST /setores` — Cadastra setor
+* `GET /setores` — Lista todos os setores
+* `GET /setores/{id}` — Busca setor por ID
+* `PUT /setores/{id}` — Atualiza setor
+* `DELETE /setores/{id}` — Exclui setor
+* `POST /equipamentos` — Cadastra equipamento
+* `GET /equipamentos` — Lista todos os equipamentos
+* `GET /equipamentos/{id}` — Busca equipamento por ID
+* `GET /equipamentos/setor/{setorId}` — Lista equipamentos de um setor
+* `PUT /equipamentos/{id}` — Atualiza equipamento
+* `DELETE /equipamentos/{id}` — Exclui equipamento
+* `POST /ordens-servico` — Cadastra nova ordem
+* `GET /ordens-servico` — Lista todas as ordens
+* `GET /ordens-servico/{id}` — Busca ordem por ID
+* `GET /ordens-servico/abertas` — Lista ordens com fechamento nulo
+* `PATCH /ordens-servico/{id}/encerramento` — Encerra a ordem gravando a solução
