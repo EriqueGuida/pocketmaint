@@ -44,7 +44,7 @@ O estado atual deste repositório representa o código funcional herdado do proj
 A transformação deste diretório será realizada em milestones sequenciais, onde cada etapa representa um commit específico:
 
 - **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
-- **[ ] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
+- **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
 - **[ ] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
 - **[ ] Milestone 3:** Máquina de estados (5 estados), regras de negócio (`BR-001` a `BR-008`) e `AuditService` transacional.
 - **[ ] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
@@ -65,13 +65,30 @@ A transformação deste diretório será realizada em milestones sequenciais, on
   ```
 
 ### Configuração:
-Verifique as credenciais no arquivo `src/main/resources/application.properties`:
+As credenciais do banco utilizam variáveis de ambiente com fallback para desenvolvimento local no arquivo `src/main/resources/application.properties`:
 ```properties
-spring.datasource.url = jdbc:mysql://localhost:3306/ordens_servico
-spring.datasource.username = root
-spring.datasource.password = 
-server.port = 9090
+spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/ordens_servico?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+spring.datasource.username=${DB_USERNAME:root}
+spring.datasource.password=${DB_PASSWORD:}
+server.port=9090
 ```
+
+Se o seu MySQL local possuir senha (ex.: `SENHA12345`), defina a variável `DB_PASSWORD` na sessão antes de rodar ou passe no comando:
+```powershell
+# No PowerShell:
+$env:DB_PASSWORD="SuaSenhaAqui"
+.\mvnw.cmd spring-boot:run
+```
+
+### Dados de Teste Locais (Migração Flyway V2):
+A migração inicial insere as credenciais abaixo para testes em ambiente de desenvolvimento (todas com senha padrão `password`):
+
+| Usuário | Perfil / Papel | Matrícula | Senha Padrão |
+| :--- | :--- | :--- | :--- |
+| `admin.sistema` | `ADMIN` | `ADM-001` | `password` |
+| `sup.roberto` | `SUPERVISOR` | `SUP-001` | `password` |
+| `tec.carlos` | `TECHNICIAN` | `TEC-001` | `password` |
+| `tec.ana` | `TECHNICIAN` | `TEC-002` | `password` |
 
 ### Inicialização via Maven Wrapper:
 No terminal do projeto:
