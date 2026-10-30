@@ -2,8 +2,12 @@ package br.com.aberturaordensservico.model;
 
 import java.time.Instant;
 
+import br.com.aberturaordensservico.exception.BusinessValidationException;
+import br.com.aberturaordensservico.exception.InvalidOrderStateTransitionException;
+import br.com.aberturaordensservico.exception.OrderAccessDeniedException;
 import br.com.aberturaordensservico.model.enums.OrderStatus;
 import br.com.aberturaordensservico.model.enums.Priority;
+import br.com.aberturaordensservico.model.enums.Role;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -101,7 +105,138 @@ public class ServiceOrder {
         }
     }
 
+    // =========================================================================
+    // Métodos de Negócio e Máquina de Estados (BR-001 a BR-008)
+    // =========================================================================
+
+    /**
+     * T-02: Atribuir ordem a um técnico (BR-002, BR-006)
+     * @return true se o estado foi modificado; false se requisição foi idempotente
+     */
+    public boolean assign(User technician, User assignedBy, String notes) {
+        if (isTerminal()) {
+            throw new InvalidOrderStateTransitionException(
+                    "Não é possível atribuir uma ordem em estado terminal: " + this.status
+            );
+        }
+        if (this.status == OrderStatus.IN_PROGRESS) {
+            throw new InvalidOrderStateTransitionException(
+                    "A ordem já está em andamento (IN_PROGRESS) e não pode ser reatribuída diretamente."
+            );
+        }
+        if (technician == null || !technician.isActive() || technician.getRole() != Role.TECHNICIAN) {
+            throw new BusinessValidationException("A ordem só pode ser atribuída a um usuário ativo com perfil TECHNICIAN.");
+        }
+
+        // Idempotência (BR-007): se já está atribuída ao mesmo técnico
+        if (this.assignedTechnician != null && this.assignedTechnician.getId().equals(technician.getId())
+                && this.status == OrderStatus.ASSIGNED) {
+            return false;
+        }
+
+        this.assignedTechnician = technician;
+        this.status = OrderStatus.ASSIGNED;
+        this.assignedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * T-03: Iniciar Atendimento (BR-003, BR-007)
+     * @return true se transicionou; false se idempotente
+     */
+    public boolean startAttendance(Long technicianId) {
+        validateTechnicianOwnership(technicianId, "iniciar o atendimento");
+
+        // Idempotência (BR-007): já está em IN_PROGRESS para o mesmo técnico
+        if (this.status == OrderStatus.IN_PROGRESS) {
+            return false;
+        }
+
+        if (this.status != OrderStatus.ASSIGNED) {
+            throw new InvalidOrderStateTransitionException(
+                    "Apenas ordens no estado ASSIGNED podem ser iniciadas. Estado atual: " + this.status
+            );
+        }
+
+        this.status = OrderStatus.IN_PROGRESS;
+        this.startedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * T-04: Concluir Ordem com Solução (BR-003, BR-004, BR-005, BR-006, BR-007)
+     * @return true se transicionou; false se idempotente
+     */
+    public boolean complete(Long technicianId, String solution) {
+        validateTechnicianOwnership(technicianId, "concluir");
+
+        if (this.status == OrderStatus.COMPLETED) {
+            // Idempotência (BR-007): já concluída
+            if (this.solutionDescription != null && this.solutionDescription.equals(solution != null ? solution.trim() : "")) {
+                return false;
+            }
+            throw new InvalidOrderStateTransitionException("Esta ordem de serviço já se encontra concluída.");
+        }
+
+        if (this.status == OrderStatus.CANCELLED) {
+            throw new InvalidOrderStateTransitionException("Não é possível concluir uma ordem cancelada.");
+        }
+
+        // BR-004: Proibição de conclusão direta sem passar por IN_PROGRESS
+        if (this.status != OrderStatus.IN_PROGRESS) {
+            throw new InvalidOrderStateTransitionException(
+                    "A ordem de serviço precisa ser iniciada (IN_PROGRESS) antes de ser concluída. Estado atual: " + this.status
+            );
+        }
+
+        // BR-005: Obrigatoriedade da descrição da solução (10 a 500 caracteres)
+        if (solution == null || solution.trim().length() < 10 || solution.trim().length() > 500) {
+            throw new BusinessValidationException("A descrição da solução deve ter entre 10 e 500 caracteres.");
+        }
+
+        this.status = OrderStatus.COMPLETED;
+        this.solutionDescription = solution.trim();
+        this.completedAt = Instant.now();
+        return true;
+    }
+
+    /**
+     * T-05: Cancelar Ordem de Serviço (BR-006)
+     * @return true se cancelou; false se idempotente
+     */
+    public boolean cancel(User user, String reason) {
+        if (this.status == OrderStatus.CANCELLED) {
+            return false; // Idempotente
+        }
+        if (this.status == OrderStatus.COMPLETED) {
+            throw new InvalidOrderStateTransitionException("Não é possível cancelar uma ordem que já foi concluída.");
+        }
+        if (reason == null || reason.trim().length() < 10 || reason.trim().length() > 300) {
+            throw new BusinessValidationException("A justificativa de cancelamento deve ter entre 10 e 300 caracteres.");
+        }
+
+        this.status = OrderStatus.CANCELLED;
+        this.cancellationReason = reason.trim();
+        this.cancelledAt = Instant.now();
+        return true;
+    }
+
+    public boolean isTerminal() {
+        return this.status == OrderStatus.COMPLETED || this.status == OrderStatus.CANCELLED;
+    }
+
+    private void validateTechnicianOwnership(Long technicianId, String actionDescription) {
+        if (this.assignedTechnician == null || !this.assignedTechnician.getId().equals(technicianId)) {
+            throw new OrderAccessDeniedException(
+                    "Apenas o técnico responsável designado pode " + actionDescription + " desta ordem de serviço."
+            );
+        }
+    }
+
+    // =========================================================================
     // Getters and Setters explícitos
+    // =========================================================================
+
     public Long getId() {
         return id;
     }

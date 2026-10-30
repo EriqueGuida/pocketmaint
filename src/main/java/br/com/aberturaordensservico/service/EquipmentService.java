@@ -1,5 +1,6 @@
 package br.com.aberturaordensservico.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,14 +31,14 @@ public class EquipmentService {
             return Optional.empty();
         }
 
-        Equipment equipment = Equipment.builder()
-                .assetTag(request.getAssetTag().trim().toUpperCase())
-                .name(request.getName().trim())
-                .model(request.getModel())
-                .serialNumber(request.getSerialNumber())
-                .sector(sectorOptional.get())
-                .active(true)
-                .build();
+        Equipment equipment = new Equipment();
+        equipment.setAssetTag(request.getAssetTag().trim().toUpperCase());
+        equipment.setName(request.getName().trim());
+        equipment.setModel(request.getModel());
+        equipment.setSerialNumber(request.getSerialNumber());
+        equipment.setSector(sectorOptional.get());
+        equipment.setActive(true);
+        equipment.setCreatedAt(Instant.now());
 
         return Optional.of(equipmentRepository.save(equipment));
     }

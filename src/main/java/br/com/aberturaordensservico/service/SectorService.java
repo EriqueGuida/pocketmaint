@@ -1,5 +1,6 @@
 package br.com.aberturaordensservico.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,12 +22,12 @@ public class SectorService {
 
     @Transactional
     public Sector createSector(SectorRequest request) {
-        Sector sector = Sector.builder()
-                .code(request.getCode().trim().toUpperCase())
-                .name(request.getName().trim())
-                .description(request.getDescription())
-                .active(true)
-                .build();
+        Sector sector = new Sector();
+        sector.setCode(request.getCode().trim().toUpperCase());
+        sector.setName(request.getName().trim());
+        sector.setDescription(request.getDescription());
+        sector.setActive(true);
+        sector.setCreatedAt(Instant.now());
         return sectorRepository.save(sector);
     }
 

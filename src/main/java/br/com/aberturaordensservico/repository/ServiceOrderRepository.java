@@ -1,6 +1,5 @@
 package br.com.aberturaordensservico.repository;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,7 +18,7 @@ public interface ServiceOrderRepository extends JpaRepository<ServiceOrder, Long
 
     Page<ServiceOrder> findByAssignedTechnicianIdAndStatusIn(
             Long technicianId,
-            Collection<OrderStatus> statuses,
+            List<OrderStatus> statuses,
             Pageable pageable
     );
 
