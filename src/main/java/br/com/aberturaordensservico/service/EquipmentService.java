@@ -26,16 +26,16 @@ public class EquipmentService {
 
     @Transactional
     public Optional<Equipment> createEquipment(EquipmentRequest request) {
-        Optional<Sector> sectorOptional = sectorRepository.findById(request.getSectorId());
+        Optional<Sector> sectorOptional = sectorRepository.findById(request.sectorId());
         if (sectorOptional.isEmpty()) {
             return Optional.empty();
         }
 
         Equipment equipment = new Equipment();
-        equipment.setAssetTag(request.getAssetTag().trim().toUpperCase());
-        equipment.setName(request.getName().trim());
-        equipment.setModel(request.getModel());
-        equipment.setSerialNumber(request.getSerialNumber());
+        equipment.setAssetTag(request.assetTag().trim().toUpperCase());
+        equipment.setName(request.name().trim());
+        equipment.setModel(request.model());
+        equipment.setSerialNumber(request.serialNumber());
         equipment.setSector(sectorOptional.get());
         equipment.setActive(true);
         equipment.setCreatedAt(Instant.now());
@@ -66,15 +66,15 @@ public class EquipmentService {
     @Transactional
     public Optional<Equipment> updateEquipment(Long id, EquipmentRequest request) {
         return equipmentRepository.findById(id).flatMap(equipment -> {
-            Optional<Sector> sectorOptional = sectorRepository.findById(request.getSectorId());
+            Optional<Sector> sectorOptional = sectorRepository.findById(request.sectorId());
             if (sectorOptional.isEmpty()) {
                 return Optional.empty();
             }
 
-            equipment.setName(request.getName().trim());
-            equipment.setAssetTag(request.getAssetTag().trim().toUpperCase());
-            equipment.setModel(request.getModel());
-            equipment.setSerialNumber(request.getSerialNumber());
+            equipment.setName(request.name().trim());
+            equipment.setAssetTag(request.assetTag().trim().toUpperCase());
+            equipment.setModel(request.model());
+            equipment.setSerialNumber(request.serialNumber());
             equipment.setSector(sectorOptional.get());
 
             return Optional.of(equipmentRepository.save(equipment));

@@ -61,8 +61,8 @@ public class ServiceOrderService {
             OriginChannel originChannel,
             String idempotencyKey
     ) {
-        Equipment equipment = equipmentRepository.findById(request.getEquipmentId())
-                .orElseThrow(() -> new ResourceNotFoundException("Equipamento não encontrado com ID: " + request.getEquipmentId()));
+        Equipment equipment = equipmentRepository.findById(request.equipmentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Equipamento não encontrado com ID: " + request.equipmentId()));
 
         if (!equipment.isActive()) {
             throw new BusinessValidationException("Não é possível abrir ordem de serviço para equipamento inativo.");
@@ -76,9 +76,9 @@ public class ServiceOrderService {
         order.setEquipment(equipment);
         order.setSector(equipment.getSector());
         order.setCreatedBy(creator);
-        order.setTitle(request.getTitle().trim());
-        order.setProblemDescription(request.getProblemDescription().trim());
-        order.setPriority(request.getPriority());
+        order.setTitle(request.title().trim());
+        order.setProblemDescription(request.problemDescription().trim());
+        order.setPriority(request.priority());
         order.setStatus(OrderStatus.OPEN);
         order.setCreatedAt(Instant.now());
         order.setVersion(0L);
@@ -94,7 +94,7 @@ public class ServiceOrderService {
                 OrderStatus.OPEN.name(),
                 originChannel,
                 idempotencyKey,
-                "Ordem de serviço criada com prioridade " + request.getPriority()
+                "Ordem de serviço criada com prioridade " + request.priority()
         );
 
         return savedOrder;
@@ -114,11 +114,11 @@ public class ServiceOrderService {
         ServiceOrder order = serviceOrderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ordem de serviço não encontrada com ID: " + orderId));
 
-        User technician = userRepository.findById(request.getTechnicianId())
-                .orElseThrow(() -> new ResourceNotFoundException("Técnico não encontrado com ID: " + request.getTechnicianId()));
+        User technician = userRepository.findById(request.technicianId())
+                .orElseThrow(() -> new ResourceNotFoundException("Técnico não encontrado com ID: " + request.technicianId()));
 
         String previousStatus = order.getStatus().name();
-        boolean stateChanged = order.assign(technician, assignedBy, request.getNotes());
+        boolean stateChanged = order.assign(technician, assignedBy, request.notes());
 
         if (stateChanged) {
             // Desativa atribuição anterior se houver
@@ -134,7 +134,7 @@ public class ServiceOrderService {
             newAssignment.setTechnician(technician);
             newAssignment.setAssignedBy(assignedBy);
             newAssignment.setActiveAssignment(true);
-            newAssignment.setNotes(request.getNotes());
+            newAssignment.setNotes(request.notes());
             newAssignment.setAssignedAt(Instant.now());
             orderAssignmentRepository.save(newAssignment);
 
@@ -205,7 +205,7 @@ public class ServiceOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ordem de serviço não encontrada com ID: " + orderId));
 
         String previousStatus = order.getStatus().name();
-        boolean stateChanged = order.complete(technicianId, request.getSolutionDescription());
+        boolean stateChanged = order.complete(technicianId, request.solutionDescription());
 
         if (stateChanged) {
             auditService.recordEvent(
@@ -216,7 +216,7 @@ public class ServiceOrderService {
                     OrderStatus.COMPLETED.name(),
                     originChannel,
                     idempotencyKey,
-                    "Solução registrada: " + request.getSolutionDescription().trim()
+                    "Solução registrada: " + request.solutionDescription().trim()
             );
 
             return serviceOrderRepository.save(order);
@@ -240,7 +240,7 @@ public class ServiceOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Ordem de serviço não encontrada com ID: " + orderId));
 
         String previousStatus = order.getStatus().name();
-        boolean stateChanged = order.cancel(user, request.getCancellationReason());
+        boolean stateChanged = order.cancel(user, request.reason());
 
         if (stateChanged) {
             auditService.recordEvent(
@@ -251,7 +251,7 @@ public class ServiceOrderService {
                     OrderStatus.CANCELLED.name(),
                     originChannel,
                     idempotencyKey,
-                    "Motivo do cancelamento: " + request.getCancellationReason().trim()
+                    "Motivo do cancelamento: " + request.reason().trim()
             );
 
             return serviceOrderRepository.save(order);

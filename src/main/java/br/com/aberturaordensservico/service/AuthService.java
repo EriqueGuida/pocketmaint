@@ -37,8 +37,8 @@ public class AuthService {
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
-                            request.getUsername().trim(),
-                            request.getPassword()
+                            request.username().trim(),
+                            request.password()
                     )
             );
 
@@ -54,10 +54,10 @@ public class AuthService {
                     user.getRole()
             );
 
-            return new LoginResponse(token, jwtService.getExpirationSeconds(), userSummary);
+            return new LoginResponse(token, "Bearer", jwtService.getExpirationSeconds(), userSummary);
 
         } catch (BadCredentialsException ex) {
-            throw new BadCredentialsException("Usuário ou senha inválidos.");
+            throw new BadCredentialsException("Usuário inexistente ou senha inválida");
         }
     }
 

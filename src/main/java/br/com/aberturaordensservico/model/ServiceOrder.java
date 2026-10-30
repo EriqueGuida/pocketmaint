@@ -365,6 +365,13 @@ public class ServiceOrder {
         this.completedAt = completedAt;
     }
 
+    public Integer getAttendanceDurationMinutes() {
+        if (startedAt != null && completedAt != null) {
+            return (int) java.time.Duration.between(startedAt, completedAt).toMinutes();
+        }
+        return null;
+    }
+
     public Instant getCancelledAt() {
         return cancelledAt;
     }

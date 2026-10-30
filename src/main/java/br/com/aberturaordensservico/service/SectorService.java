@@ -23,9 +23,9 @@ public class SectorService {
     @Transactional
     public Sector createSector(SectorRequest request) {
         Sector sector = new Sector();
-        sector.setCode(request.getCode().trim().toUpperCase());
-        sector.setName(request.getName().trim());
-        sector.setDescription(request.getDescription());
+        sector.setCode(request.code().trim().toUpperCase());
+        sector.setName(request.name().trim());
+        sector.setDescription(request.description());
         sector.setActive(true);
         sector.setCreatedAt(Instant.now());
         return sectorRepository.save(sector);
@@ -50,10 +50,10 @@ public class SectorService {
     @Transactional
     public Optional<Sector> updateSector(Long id, SectorRequest request) {
         return sectorRepository.findById(id).map(sector -> {
-            sector.setName(request.getName().trim());
-            sector.setDescription(request.getDescription());
-            if (request.getCode() != null && !request.getCode().isBlank()) {
-                sector.setCode(request.getCode().trim().toUpperCase());
+            sector.setName(request.name().trim());
+            sector.setDescription(request.description());
+            if (request.code() != null && !request.code().isBlank()) {
+                sector.setCode(request.code().trim().toUpperCase());
             }
             return sectorRepository.save(sector);
         });

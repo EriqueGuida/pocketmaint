@@ -1,20 +1,11 @@
 package br.com.aberturaordensservico.dto;
 
 import br.com.aberturaordensservico.model.enums.Role;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class UserMeResponse {
-
-    private Long id;
-    private String username;
-    private String fullName;
-    private Role role;
-    private boolean active;
-}
+public record UserMeResponse(
+        Long id,
+        String username,
+        String fullName,
+        Role role,
+        boolean active
+) {}
