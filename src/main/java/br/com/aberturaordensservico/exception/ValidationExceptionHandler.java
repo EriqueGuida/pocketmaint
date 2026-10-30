@@ -72,4 +72,28 @@ public class ValidationExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
+
+    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleBadCredentials(org.springframework.security.authentication.BadCredentialsException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.UNAUTHORIZED.value());
+        body.put("errorCode", "AUTH_INVALID_CREDENTIALS");
+        body.put("title", "Falha de autenticação");
+        body.put("userMessage", "Usuário ou senha inválidos.");
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
+
+    @ExceptionHandler(org.springframework.security.core.userdetails.UsernameNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleUsernameNotFound(org.springframework.security.core.userdetails.UsernameNotFoundException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.UNAUTHORIZED.value());
+        body.put("errorCode", "AUTH_INVALID_CREDENTIALS");
+        body.put("title", "Falha de autenticação");
+        body.put("userMessage", "Usuário ou senha inválidos.");
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+    }
 }

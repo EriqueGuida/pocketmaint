@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import br.com.aberturaordensservico.model.AuditEvent;
 import br.com.aberturaordensservico.model.ServiceOrder;
 import br.com.aberturaordensservico.model.enums.OrderStatus;
 import br.com.aberturaordensservico.model.enums.OriginChannel;
+import br.com.aberturaordensservico.security.CustomUserDetails;
 import br.com.aberturaordensservico.service.AuditService;
 import br.com.aberturaordensservico.service.ServiceOrderService;
 import jakarta.validation.Valid;
@@ -39,10 +41,16 @@ public class ServiceOrderController {
     @PostMapping
     public ResponseEntity<ServiceOrder> createOrder(
             @Valid @RequestBody ServiceOrderRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Origin-Channel", required = false) OriginChannel originChannel
     ) {
-        ServiceOrder created = serviceOrderService.createOrder(request, null, originChannel, idempotencyKey);
+        ServiceOrder created = serviceOrderService.createOrder(
+                request,
+                userDetails != null ? userDetails.getUser() : null,
+                originChannel,
+                idempotencyKey
+        );
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -67,22 +75,29 @@ public class ServiceOrderController {
     public ResponseEntity<ServiceOrder> assignOrder(
             @PathVariable Long id,
             @Valid @RequestBody OrderAssignmentRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Origin-Channel", required = false) OriginChannel originChannel
     ) {
-        ServiceOrder assigned = serviceOrderService.assignOrder(id, request, null, originChannel, idempotencyKey);
+        ServiceOrder assigned = serviceOrderService.assignOrder(
+                id,
+                request,
+                userDetails != null ? userDetails.getUser() : null,
+                originChannel,
+                idempotencyKey
+        );
         return ResponseEntity.ok(assigned);
     }
 
     @PostMapping("/{id}/start")
     public ResponseEntity<ServiceOrder> startOrder(
             @PathVariable Long id,
-            @RequestHeader(value = "X-Actor-Technician-Id", required = false) Long technicianId,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Origin-Channel", required = false) OriginChannel originChannel
     ) {
-        // Na Milestone 4, o technicianId virá direto do token JWT autenticado
-        Long techId = (technicianId != null) ? technicianId : 3L; // Fallback para tec.carlos durante M3
+        // Validação estrita de identidade via JWT: técnico autenticado (SEC-01, BR-003)
+        Long techId = userDetails.getId();
         ServiceOrder started = serviceOrderService.startOrder(id, techId, originChannel, idempotencyKey);
         return ResponseEntity.ok(started);
     }
@@ -91,11 +106,11 @@ public class ServiceOrderController {
     public ResponseEntity<ServiceOrder> completeOrder(
             @PathVariable Long id,
             @Valid @RequestBody OrderCompletionRequest request,
-            @RequestHeader(value = "X-Actor-Technician-Id", required = false) Long technicianId,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Origin-Channel", required = false) OriginChannel originChannel
     ) {
-        Long techId = (technicianId != null) ? technicianId : 3L;
+        Long techId = userDetails.getId();
         ServiceOrder completed = serviceOrderService.completeOrder(id, techId, request, originChannel, idempotencyKey);
         return ResponseEntity.ok(completed);
     }
@@ -104,10 +119,17 @@ public class ServiceOrderController {
     public ResponseEntity<ServiceOrder> cancelOrder(
             @PathVariable Long id,
             @Valid @RequestBody OrderCancellationRequest request,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Origin-Channel", required = false) OriginChannel originChannel
     ) {
-        ServiceOrder cancelled = serviceOrderService.cancelOrder(id, null, request, originChannel, idempotencyKey);
+        ServiceOrder cancelled = serviceOrderService.cancelOrder(
+                id,
+                userDetails != null ? userDetails.getUser() : null,
+                request,
+                originChannel,
+                idempotencyKey
+        );
         return ResponseEntity.ok(cancelled);
     }
 

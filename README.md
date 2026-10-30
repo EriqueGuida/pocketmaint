@@ -47,7 +47,7 @@ A transformação deste diretório será realizada em milestones sequenciais, on
 - **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
 - **[x] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
 - **[x] Milestone 3:** Máquina de estados (5 estados), regras de negócio (`BR-001` a `BR-008`) e `AuditService` transacional.
-- **[ ] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
+- **[x] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
 - **[ ] Milestone 5:** Padronização RFC 9457 (`GlobalExceptionHandler`), `/api/v1/health` e endpoints de técnico (`/me/orders`, `/start`, `/complete`).
 - **[ ] Milestone 6:** Endpoints de supervisor/admin (criação, atribuição, cancelamento, auditoria e gestão de ativos com exclusão lógica).
 - **[ ] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento do backend. *(Tag: `v1.0.0-backend`)*
@@ -104,26 +104,34 @@ A API estará acessível em: `http://localhost:9090`
 
 ---
 
-## 5. Rotas Disponíveis na Milestone 2 (Padronizadas em Inglês)
+## 5. Rotas Disponíveis na Milestone 4
+
+### Autenticação e Sessão (`/api/v1/auth`):
+* `POST /api/v1/auth/login` — Autentica usuário com `username` e `password`, devolvendo o token JWT Bearer.
+* `GET /api/v1/auth/me` — Valida o token e retorna os dados do usuário autenticado no cabeçalho `Authorization: Bearer <token>`.
 
 ### Setores (`/api/v1/sectors`):
-* `POST /api/v1/sectors` — Cadastra setor (`code`, `name`, `description`)
+* `POST /api/v1/sectors` — Cadastra setor (`code`, `name`, `description`) [Requer `ADMIN`]
 * `GET /api/v1/sectors` — Lista setores ativos
 * `GET /api/v1/sectors/{id}` — Busca setor por ID
-* `PUT /api/v1/sectors/{id}` — Atualiza dados do setor
-* `DELETE /api/v1/sectors/{id}` — Inativa setor (exclusão lógica)
+* `PUT /api/v1/sectors/{id}` — Atualiza dados do setor [Requer `ADMIN`]
+* `DELETE /api/v1/sectors/{id}` — Inativa setor (exclusão lógica) [Requer `ADMIN`]
 
 ### Equipamentos (`/api/v1/equipments`):
-* `POST /api/v1/equipments` — Cadastra equipamento (`assetTag`, `name`, `model`, `serialNumber`, `sectorId`)
+* `POST /api/v1/equipments` — Cadastra equipamento (`assetTag`, `name`, `model`, `serialNumber`, `sectorId`) [Requer `ADMIN`]
 * `GET /api/v1/equipments` — Lista equipamentos ativos
 * `GET /api/v1/equipments/{id}` — Busca equipamento por ID
 * `GET /api/v1/equipments/sector/{sectorId}` — Lista equipamentos por setor
-* `PUT /api/v1/equipments/{id}` — Atualiza equipamento
-* `DELETE /api/v1/equipments/{id}` — Inativa equipamento (exclusão lógica)
+* `PUT /api/v1/equipments/{id}` — Atualiza equipamento [Requer `ADMIN`]
+* `DELETE /api/v1/equipments/{id}` — Inativa equipamento (exclusão lógica) [Requer `ADMIN`]
 
 ### Ordens de Serviço (`/api/v1/orders`):
-* `POST /api/v1/orders` — Cria nova ordem vinculada a equipamento (`title`, `problemDescription`, `priority`)
+* `POST /api/v1/orders` — Cria nova ordem vinculada a equipamento [Requer `SUPERVISOR` ou `ADMIN`]
 * `GET /api/v1/orders` — Lista todas as ordens
 * `GET /api/v1/orders/{id}` — Busca ordem por ID
 * `GET /api/v1/orders/open` — Lista ordens no estado `OPEN`
-* `PATCH /api/v1/orders/{id}/complete` — Conclui a ordem com a solução executada
+* `POST /api/v1/orders/{id}/assign` — Atribui OS ao técnico [Requer `SUPERVISOR` ou `ADMIN`]
+* `POST /api/v1/orders/{id}/start` — Inicia atendimento [Exclusivo para o técnico responsável da ordem]
+* `POST /api/v1/orders/{id}/complete` — Conclui registrando solução [Exclusivo para o técnico responsável]
+* `POST /api/v1/orders/{id}/cancel` — Cancela com justificativa [Requer `SUPERVISOR` ou `ADMIN`]
+* `GET /api/v1/orders/{id}/audit` — Trilha cronológica de auditoria [Requer `SUPERVISOR` ou `ADMIN`]
