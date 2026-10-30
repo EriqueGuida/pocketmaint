@@ -82,10 +82,14 @@ public class SecurityConfig {
                         // Endpoints de mutação de setores e equipamentos restritos a ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/v1/sectors/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/sectors/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/sectors/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/sectors/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/equipments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/equipments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/equipments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/equipments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/sectors/**").hasAnyRole("SUPERVISOR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/equipments/**").hasAnyRole("SUPERVISOR", "ADMIN")
 
                         // Endpoints de criação/atribuição/cancelamento de OS para SUPERVISOR e ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/v1/orders").hasAnyRole("SUPERVISOR", "ADMIN")
