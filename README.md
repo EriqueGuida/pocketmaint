@@ -1,47 +1,71 @@
 # PocketMaint — Backend de Ordens de Serviço de Manutenção
 
-> 📌 **Status do Repositório — Milestone 0: Ponto de Partida Legado (Baseline)**  
-> **Tag:** `v0.0.0-baseline-legado`  
-> Este commit registra o código original herdado de um projeto acadêmico do SENAI antes do início do processo de refatoração incremental para o padrão arquitetural do **PocketMaint**.
+> 📌 **Status do Repositório — Backend Concluído com Sucesso**  
+> **Versão:** `1.0.0` | **Tag de Conclusão:** `v1.0.0-backend`  
+> Este repositório contém a implementação completa da API RESTful do **PocketMaint**, estruturada para servir tanto terminais portáteis industriais (**M5Stack CardPuter ADV**) quanto interfaces web administrativas de supervisão de manutenção.
 
 ---
 
-## 1. Sobre o Projeto
+## 1. Visão Geral e Arquitetura
 
-O **PocketMaint** é um sistema transacional de gerenciamento de ordens de serviço de manutenção técnica, projetado para operar com autoridade única sobre regras de negócio, máquina de estados estrita, autenticação por perfil (RBAC), controle anti-IDOR e trilha imutável de auditoria.
+O **PocketMaint** é um sistema transacional com autoridade centralizada para abertura, despacho, atendimento de campo e auditoria de Ordens de Serviço (OS) industriais.
 
-O desenvolvimento deste backend foi concebido como um caso prático de engenharia de software e refatoração evolutiva: partir de uma base acadêmica simples e transformá-la, passo a passo e com histórico auditável de commits, em uma API robusta e alinhada à especificação técnica oficial (`SPECIFICATION.md`).
+### 1.1 Arquitetura Monólito Modular
+O backend foi concebido sob o padrão de **Monólito Modular** em camadas (*Layered Architecture*), priorizando alta coesão, acoplamento controlado, facilidade de teste e baixa complexidade operacional:
 
----
-
-## 2. Diagnóstico do Baseline (Situação no Commit 0)
-
-O estado atual deste repositório representa o código funcional herdado do projeto do SENAI (`aberturaordensservico`). 
-
-### O que já está presente no código:
-- **Setores:** Cadastro, consulta por ID, listagem, atualização e exclusão física.
-- **Equipamentos:** Cadastro vinculado a setor, listagem geral, consulta por setor, atualização e exclusão física.
-- **Ordens de Serviço (Básico):** Cadastro de ordem (descrição e equipamento), consulta por ID, listagem de abertas e encerramento (gravando data de fechamento e texto de solução).
-- **Stack Base:** Java 17, Spring Boot, Spring Data JPA, Hibernate, Bean Validation e MySQL.
-
-### Gaps identificados em relação à especificação do PocketMaint:
-| Área / Funcionalidade | Situação no Baseline (Commit 0) | Requisito Alvo (PocketMaint) |
-| :--- | :--- | :--- |
-| **Máquina de Estados** | Binária (`aberta` se `dataFechamento == null`, ou `encerrada`) | 5 estados formais: `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` |
-| **Segurança e Acesso** | Nenhuma autenticação ou controle de perfil | Spring Security, JWT (Bearer Token), perfis `ADMIN`, `SUPERVISOR`, `TECHNICIAN` |
-| **Controle Anti-IDOR** | Qualquer cliente pode manipular qualquer ordem | Validação de posse: técnico só opera ordens atribuídas a ele |
-| **Modelo de Domínio** | Apenas `Setor`, `Equipamento` e `OrdemServico` simples | Inclusão de `User`, `OrderAssignment` e `AuditEvent` |
-| **Auditoria** | Inexistente | Trilha imutável em `audit_events` na mesma transação `@Transactional` |
-| **Esquema de Banco** | `ddl-auto: update` (criação automática de tabelas) | Migrações SQL versionadas via Flyway (`V1`, `V2`) |
-| **Contratos de API** | Rotas sem versionamento (`/ordens-servico`, etc.) e erros crus | Prefixo `/api/v1/...` e tratamento de erros padronizado via RFC 9457 |
-| **Integridade de Dados** | Exclusão física (`DELETE`) em setores e equipamentos | Exclusão lógica (`active = false`) para manter integridade relacional |
-| **Concorrência** | Sem controle de versão | Concorrência otimista com `@Version` em `ServiceOrder` |
+```
+src/main/java/br/com/aberturaordensservico/
+├── config/              # Configurações do OpenAPI/Swagger UI e Beans de infraestrutura
+├── controller/          # Endpoints RESTful versionados (/api/v1/...) com anotações OpenAPI
+├── dto/                 # Contratos de entrada e saída imutáveis (Records nativos do Java 17)
+├── exception/           # Manipulador global RFC 9457 e exceções semânticas de negócio
+├── model/               # Entidades JPA ricas, encapsulando transições da máquina de estados
+│   └── enums/           # Enums tipados (OrderStatus, Role, Priority, AuditEventType, OriginChannel)
+├── repository/          # Interfaces Spring Data JPA para persistência otimizada
+├── security/            # Spring Security, filtros JWT stateless, RBAC e validação anti-IDOR
+└── service/             # Orquestração transacional, regras de negócio e serviço de auditoria
+```
 
 ---
 
-## 3. Roteiro Incremental de Milestones (Plano de Commits)
+## 2. Máquina de Estados e Regras de Negócio
 
-A transformação deste diretório será realizada em milestones sequenciais, onde cada etapa representa um commit específico:
+O ciclo de vida de uma Ordem de Serviço obedece a uma máquina de estados estrita com 5 estados formais:
+
+```
+        ┌────────────────────────────────────────────────────────┐
+        │                                                        │ (BR-006: Cancelar)
+        ▼                                                        │
+    [ OPEN ] ────(BR-002: Atribuir)───► [ ASSIGNED ] ───────────┤
+                                             │                   │
+                                   (BR-003: Iniciar)             │
+                                             │                   │
+                                             ▼                   │
+                                     [ IN_PROGRESS ] ────────────┤
+                                             │                   │
+                                   (BR-004: Concluir)            │
+                                             │                   │
+                                             ▼                   ▼
+                                       [ COMPLETED ]       [ CANCELLED ]
+                                    (Estado Terminal)    (Estado Terminal)
+```
+
+### Regras de Negócio Canônicas (BR-001 a BR-009):
+- **BR-001 — Vínculo Obrigatório com Equipamento Ativo:** Toda OS deve estar associada a um equipamento ativo cadastrado.
+- **BR-002 — Atribuição Exclusiva a Técnicos Ativos:** Apenas usuários ativos com o papel `TECHNICIAN` podem ser atribuídos a uma OS.
+- **BR-003 — Autorização Anti-IDOR de Atendimento:** O técnico autenticado só pode visualizar detalhes completos, iniciar ou concluir ordens designadas especificamente ao seu ID.
+- **BR-004 — Proibição de Conclusão Direta:** Uma OS não pode saltar de `ASSIGNED` diretamente para `COMPLETED`; a transição intermediária por `IN_PROGRESS` é obrigatória.
+- **BR-005 — Justificativa Técnica Obrigatória na Conclusão:** O fechamento da ordem exige descrição técnica da solução com extensão entre 10 e 500 caracteres.
+- **BR-006 — Proibição de Cancelamento em Estados Terminais:** Ordens em `COMPLETED` ou `CANCELLED` não podem ser canceladas. O cancelamento exige justificativa entre 5 e 255 caracteres.
+- **BR-007 — Idempotência de Transições:** Repetições de requisições de início ou encerramento com a mesma chave/estado retornam `200 OK` sem gerar erros nem duplicar registros de auditoria.
+- **BR-008 — Auditoria Transacional Obrigatória:** Toda transição de estado gera registro imutável em `audit_events` na mesma transação atômica (`@Transactional`).
+- **BR-009 — Inativação em vez de Exclusão Física (Soft Delete):** Setores e Equipamentos nunca sofrem `DELETE` físico se houver registros vinculados; recebem marcação `active = false`.
+
+---
+
+## 3. Roteiro Incremental de Milestones (Histórico de Entrega)
+
+Todas as metas estabelecidas no plano de modernização foram integralmente cumpridas:
 
 - **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
 - **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
@@ -50,22 +74,23 @@ A transformação deste diretório será realizada em milestones sequenciais, on
 - **[x] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
 - **[x] Milestone 5:** Padronização RFC 9457 (`GlobalExceptionHandler`), `/api/v1/health` e endpoints de técnico (`/me/orders`, `/start`, `/complete`), migração dos DTOs para Java 17 records.
 - **[x] Milestone 6:** Endpoints de supervisor/admin (criação, atribuição, cancelamento, auditoria e gestão de ativos com exclusão lógica).
-- **[ ] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento do backend. *(Tag: `v1.0.0-backend`)*
+- **[x] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento do backend. *(Tag: `v1.0.0-backend`)*
 
 ---
 
-## 4. Como Executar o Projeto no Estado Atual (Baseline)
+## 4. Como Executar o Backend Localmente
 
 ### Pré-requisitos:
-* **Java Development Kit (JDK):** Versão 17 LTS instalada e configurada no `PATH`.
-* **Banco de Dados:** Servidor MySQL rodando localmente na porta `3306`.
-* **Base de dados criada:**
+* **Java Development Kit (JDK):** Versão 17 LTS instalada e acessível no terminal (`java -version`).
+* **Banco de Dados:** Servidor MySQL 8.x em execução na porta padrão `3306`.
+* **Criação do Banco de Dados:**
   ```sql
-  CREATE DATABASE ordens_servico;
+  CREATE DATABASE IF NOT EXISTS ordens_servico CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
   ```
 
-### Configuração:
-As credenciais do banco utilizam variáveis de ambiente com fallback para desenvolvimento local no arquivo `src/main/resources/application.properties`:
+### Variáveis de Ambiente e Configuração:
+O arquivo `src/main/resources/application.properties` está preparado com fallbacks automáticos para desenvolvimento local:
+
 ```properties
 spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/ordens_servico?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
 spring.datasource.username=${DB_USERNAME:root}
@@ -73,65 +98,84 @@ spring.datasource.password=${DB_PASSWORD:}
 server.port=9090
 ```
 
-Se o seu MySQL local possuir senha (ex.: `SENHA12345`), defina a variável `DB_PASSWORD` na sessão antes de rodar ou passe no comando:
+Se o seu MySQL local exigir usuário ou senha específicos:
 ```powershell
-# No PowerShell:
+# Exemplo no PowerShell (Windows):
+$env:DB_USERNAME="root"
 $env:DB_PASSWORD="SuaSenhaAqui"
 .\mvnw.cmd spring-boot:run
 ```
-
-### Dados de Teste Locais (Migração Flyway V2):
-A migração inicial insere as credenciais abaixo para testes em ambiente de desenvolvimento (todas com senha padrão `password`):
-
-| Usuário | Perfil / Papel | Matrícula | Senha Padrão |
-| :--- | :--- | :--- | :--- |
-| `admin.sistema` | `ADMIN` | `ADM-001` | `password` |
-| `sup.roberto` | `SUPERVISOR` | `SUP-001` | `password` |
-| `tec.carlos` | `TECHNICIAN` | `TEC-001` | `password` |
-| `tec.ana` | `TECHNICIAN` | `TEC-002` | `password` |
-
-### Inicialização via Maven Wrapper:
-No terminal do projeto:
 ```bash
-# Windows
-.\mvnw.cmd spring-boot:run
-
-# Linux / macOS
+# Exemplo no Bash (Linux / macOS):
+export DB_USERNAME="root"
+export DB_PASSWORD="SuaSenhaAqui"
 ./mvnw spring-boot:run
 ```
 
-A API estará acessível em: `http://localhost:9090`
+---
+
+## 5. Credenciais Iniciais de Teste (Migração Flyway V2)
+
+Ao iniciar a aplicação pela primeira vez, as migrações Flyway (`V1__create_initial_schema.sql` e `V2__seed_dev_data.sql`) estruturam o banco e inserem usuários de teste com senhas criptografadas em **BCrypt**:
+
+| Usuário | Perfil / Papel (`Role`) | Nome Completo | Senha Padrão | Cenário de Uso |
+| :--- | :--- | :--- | :--- | :--- |
+| `admin.sistema` | `ROLE_ADMIN` | Administrador Geral | `password` | Gestão de setores, equipamentos e ordens |
+| `sup.roberto` | `ROLE_SUPERVISOR` | Roberto Lima | `password` | Abertura, atribuição, cancelamento e auditoria |
+| `tec.carlos` | `ROLE_TECHNICIAN` | Carlos Mendes | `password` | Operação no terminal móvel (CardPuter) |
+| `tec.ana` | `ROLE_TECHNICIAN` | Ana Paula Silva | `password` | Testes de controle de posse e anti-IDOR |
 
 ---
 
-## 5. Rotas Disponíveis na Milestone 4
+## 6. Documentação Interativa OpenAPI / Swagger UI
 
-### Autenticação e Sessão (`/api/v1/auth`):
-* `POST /api/v1/auth/login` — Autentica usuário com `username` e `password`, devolvendo o token JWT Bearer.
-* `GET /api/v1/auth/me` — Valida o token e retorna os dados do usuário autenticado no cabeçalho `Authorization: Bearer <token>`.
+A documentação interativa da API está disponível diretamente no navegador assim que o servidor é iniciado:
 
-### Setores (`/api/v1/sectors`):
-* `POST /api/v1/sectors` — Cadastra setor (`code`, `name`, `description`) [Requer `ADMIN`]
-* `GET /api/v1/sectors` — Lista setores ativos
-* `GET /api/v1/sectors/{id}` — Busca setor por ID
-* `PUT /api/v1/sectors/{id}` — Atualiza dados do setor [Requer `ADMIN`]
-* `DELETE /api/v1/sectors/{id}` — Inativa setor (exclusão lógica) [Requer `ADMIN`]
+* **URL Principal / Redirecionamento Automático:** [`http://localhost:9090/`](http://localhost:9090/)
+* **URL Direta do Swagger UI:** [`http://localhost:9090/swagger-ui.html`](http://localhost:9090/swagger-ui.html)
+* **Especificação OpenAPI em JSON:** [`http://localhost:9090/v3/api-docs`](http://localhost:9090/v3/api-docs)
 
-### Equipamentos (`/api/v1/equipments`):
-* `POST /api/v1/equipments` — Cadastra equipamento (`assetTag`, `name`, `model`, `serialNumber`, `sectorId`) [Requer `ADMIN`]
-* `GET /api/v1/equipments` — Lista equipamentos ativos
-* `GET /api/v1/equipments/{id}` — Busca equipamento por ID
-* `GET /api/v1/equipments/sector/{sectorId}` — Lista equipamentos por setor
-* `PUT /api/v1/equipments/{id}` — Atualiza equipamento [Requer `ADMIN`]
-* `DELETE /api/v1/equipments/{id}` — Inativa equipamento (exclusão lógica) [Requer `ADMIN`]
+### Como autenticar no Swagger UI:
+1. Acesse o endpoint **`POST /api/v1/auth/login`**.
+2. Execute a requisição com o usuário desejado (ex.: `tec.carlos` e senha `password`).
+3. Copie o valor do campo `accessToken` da resposta JSON.
+4. Clique no botão **Authorize** (ícone de cadeado verde no topo direito do Swagger UI).
+5. Cole o token no campo de valor e clique em **Authorize**. Todas as requisições subsequentes incluirão o cabeçalho `Authorization: Bearer <token>`.
 
-### Ordens de Serviço (`/api/v1/orders`):
-* `POST /api/v1/orders` — Cria nova ordem vinculada a equipamento [Requer `SUPERVISOR` ou `ADMIN`]
-* `GET /api/v1/orders` — Lista todas as ordens
-* `GET /api/v1/orders/{id}` — Busca ordem por ID
-* `GET /api/v1/orders/open` — Lista ordens no estado `OPEN`
-* `POST /api/v1/orders/{id}/assign` — Atribui OS ao técnico [Requer `SUPERVISOR` ou `ADMIN`]
-* `POST /api/v1/orders/{id}/start` — Inicia atendimento [Exclusivo para o técnico responsável da ordem]
-* `POST /api/v1/orders/{id}/complete` — Conclui registrando solução [Exclusivo para o técnico responsável]
-* `POST /api/v1/orders/{id}/cancel` — Cancela com justificativa [Requer `SUPERVISOR` ou `ADMIN`]
-* `GET /api/v1/orders/{id}/audit` — Trilha cronológica de auditoria [Requer `SUPERVISOR` ou `ADMIN`]
+---
+
+## 7. Catálogo Canônico de Endpoints da API
+
+| Código | Método | Rota | Perfis Permitidos | Descrição |
+| :---: | :---: | :--- | :---: | :--- |
+| **EP-001** | `GET` | `/api/v1/health` | Público | Verificação de disponibilidade e horário do servidor. |
+| **EP-002** | `POST` | `/api/v1/auth/login` | Público | Autentica credenciais e emite token Bearer JWT (8h). |
+| **EP-003** | `GET` | `/api/v1/auth/me` | Autenticado | Identificação dos dados da sessão ativa. |
+| **EP-004** | `GET` | `/api/v1/me/orders` | `TECHNICIAN` | Lista compacta e paginada das ordens do técnico logado. |
+| **EP-005** | `GET` | `/api/v1/orders/{id}` | `TECHNICIAN`*, `SUPERVISOR`, `ADMIN` | Consulta detalhada da OS (*se técnico, apenas as suas). |
+| **EP-006** | `POST` | `/api/v1/orders/{id}/start` | `TECHNICIAN`* | Inicia atendimento presencial (`ASSIGNED` $\rightarrow$ `IN_PROGRESS`). |
+| **EP-007** | `POST` | `/api/v1/orders/{id}/complete` | `TECHNICIAN`* | Registra solução e conclui OS (`IN_PROGRESS` $\rightarrow$ `COMPLETED`). |
+| **EP-008** | `POST` | `/api/v1/orders` | `SUPERVISOR`, `ADMIN` | Abertura de nova OS vinculada a equipamento ativo. |
+| **EP-009** | `POST` | `/api/v1/orders/{id}/assign` | `SUPERVISOR`, `ADMIN` | Designação ou reatribuição de técnico responsável. |
+| **EP-010** | `POST` | `/api/v1/orders/{id}/cancel` | `SUPERVISOR`, `ADMIN` | Cancelamento de OS com justificativa obrigatória. |
+| **EP-010** | `GET` | `/api/v1/orders/{id}/audit` | `SUPERVISOR`, `ADMIN` | Trilha cronológica imutável de eventos de auditoria. |
+| **Ativos** | `POST/PUT/DELETE` | `/api/v1/sectors/**` | `ADMIN` | Gestão de setores com inativação lógica. |
+| **Ativos** | `POST/PUT/DELETE` | `/api/v1/equipments/**` | `ADMIN` | Gestão de equipamentos com inativação lógica. |
+
+---
+
+## 8. Padronização de Erros (RFC 9457)
+
+Qualquer falha de requisição ou violação de regra de negócio devolve respostas uniformes no padrão canônico RFC 9457:
+
+```json
+{
+  "timestamp": "2026-10-30T17:15:00Z",
+  "status": 403,
+  "errorCode": "ACCESS_DENIED_NOT_OWNER",
+  "title": "Acesso negado ao recurso",
+  "userMessage": "Esta ordem de serviço não está atribuída ao seu usuário.",
+  "path": "/api/v1/orders/42",
+  "fieldErrors": []
+}
+```
