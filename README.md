@@ -14,7 +14,7 @@ O **PocketMaint** é um sistema transacional com autoridade centralizada para ab
 O backend foi concebido sob o padrão de **Monólito Modular** em camadas (*Layered Architecture*), priorizando alta coesão, acoplamento controlado, facilidade de teste e baixa complexidade operacional:
 
 ```
-src/main/java/br/com/aberturaordensservico/
+src/main/java/br/com/pocketmaint/
 ├── config/              # Configurações do OpenAPI/Swagger UI e Beans de infraestrutura
 ├── controller/          # Endpoints RESTful versionados (/api/v1/...) com anotações OpenAPI
 ├── dto/                 # Contratos de entrada e saída imutáveis (Records nativos do Java 17)
