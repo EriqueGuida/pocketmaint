@@ -9,6 +9,7 @@ AppController appController;
 
 AppController::AppController()
     : _currentScreen(SCR_BOOT)
+    , _returnScreen(SCR_ORDER_LIST)
     , _screenEnterTimeMs(0)
     , _screenNeedsRedraw(true)
     , _loginActiveField(0)
@@ -17,6 +18,11 @@ AppController::AppController()
     , _selectedOrderIndex(0)
     , _scrollOffset(0)
     , _detailScrollLine(0)
+    , _solutionText("")
+    , _solutionWarning(false)
+    , _feedbackTitle("")
+    , _feedbackMessage("")
+    , _feedbackTimestamp("2026-10-31 19:30:00")
 {
 }
 
@@ -37,7 +43,8 @@ void AppController::initMockData() {
         "ALTA",
         "Compressor Parafuso (EQ-100)",
         "Setor Industrial (SEC-01)",
-        "Equipamento apresentando vibracao excessiva no mancal do motor principal. Substituir conjunto de rolamentos e filtro de oleo lubrificante conforme manual."
+        "Equipamento apresentando vibracao excessiva no mancal do motor principal. Substituir conjunto de rolamentos e filtro de oleo lubrificante conforme manual.",
+        ""
     });
 
     _mockOrders.push_back({
@@ -48,7 +55,8 @@ void AppController::initMockData() {
         "CRITICA",
         "Torno CNC 02 (EQ-104)",
         "Usinagem de Precisao (SEC-02)",
-        "Pressostato de seguranca indicando corte indevido da bomba refrigerante. Necessario calibrar ponto de desarme e inspecionar fiacao do sensor."
+        "Pressostato de seguranca indicando corte indevido da bomba refrigerante. Necessario calibrar ponto de desarme e inspecionar fiacao do sensor.",
+        ""
     });
 
     _mockOrders.push_back({
@@ -59,7 +67,8 @@ void AppController::initMockData() {
         "MEDIA",
         "Prensa Hidraulica 50T (EQ-108)",
         "Estamparia Pesada (SEC-03)",
-        "Vazamento visivel de fluido no cilindro de compressao. Substituir gaxetas de vedacao e verificar nivel do reservatorio ISO VG 68."
+        "Vazamento visivel de fluido no cilindro de compressao. Substituir gaxetas de vedacao e verificar nivel do reservatorio ISO VG 68.",
+        ""
     });
 
     _mockOrders.push_back({
@@ -70,7 +79,8 @@ void AppController::initMockData() {
         "BAIXA",
         "Furadeira Radial (EQ-112)",
         "Manutencao Geral (SEC-01)",
-        "Lubrificacao das guias lineares e verificacao da folga da arvore de furacao. Intervencao semestral programada."
+        "Lubrificacao das guias lineares e verificacao da folga da arvore de furacao. Intervencao semestral programada.",
+        ""
     });
 }
 
@@ -79,8 +89,36 @@ void AppController::setScreen(ScreenId screen) {
     _screenEnterTimeMs = millis();
     _screenNeedsRedraw = true;
     _detailScrollLine = 0;
+    _solutionWarning = false;
 
     Serial.printf("[AppController] Mudanca de tela -> SCR-%03d\n", (int)screen);
+}
+
+void AppController::showSuccess(const String& title, const String& message, ScreenId returnTo) {
+    _feedbackTitle = title;
+    _feedbackMessage = message;
+    _returnScreen = returnTo;
+    HardwareInit::beepConfirm();
+    setScreen(SCR_SUCCESS);
+}
+
+void AppController::showError(const String& title, const String& message, ScreenId returnTo) {
+    _feedbackTitle = title;
+    _feedbackMessage = message;
+    _returnScreen = returnTo;
+    HardwareInit::beepError();
+    setScreen(SCR_COMM_ERROR);
+}
+
+void AppController::showAccessDenied(const String& message) {
+    _feedbackMessage = message;
+    HardwareInit::beepError();
+    setScreen(SCR_ACCESS_DENIED);
+}
+
+void AppController::showSessionExpired() {
+    HardwareInit::beepError();
+    setScreen(SCR_SESSION_EXPIRED);
 }
 
 void AppController::update() {
@@ -118,6 +156,27 @@ void AppController::renderScreen() {
         case SCR_ORDER_DETAIL:
             renderOrderDetailScreen();
             break;
+        case SCR_CONFIRM_START:
+            renderConfirmStartScreen();
+            break;
+        case SCR_SOLUTION_FORM:
+            renderSolutionFormScreen();
+            break;
+        case SCR_CONFIRM_COMPLETE:
+            renderConfirmCompleteScreen();
+            break;
+        case SCR_SUCCESS:
+            renderSuccessScreen();
+            break;
+        case SCR_COMM_ERROR:
+            renderCommErrorScreen();
+            break;
+        case SCR_ACCESS_DENIED:
+            renderAccessDeniedScreen();
+            break;
+        case SCR_SESSION_EXPIRED:
+            renderSessionExpiredScreen();
+            break;
     }
     uiRenderer.flush();
 }
@@ -127,7 +186,6 @@ void AppController::renderScreen() {
 // =============================================================================
 void AppController::renderBootScreen() {
     uiRenderer.clear(TFT_BLACK);
-
     uiRenderer.drawHeader("POCKETMAINT", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
 
     uiRenderer.drawTextCenter("POCKETMAINT", 34, TFT_CYAN, 2);
@@ -143,7 +201,6 @@ void AppController::renderBootScreen() {
 // =============================================================================
 void AppController::renderConnStatusScreen() {
     uiRenderer.clear(TFT_BLACK);
-
     uiRenderer.drawHeader("CONEXAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
 
     uiRenderer.drawText("STATUS DE REDE (SCR-002)", 8, 24, TFT_YELLOW, 1);
@@ -180,7 +237,6 @@ void AppController::renderConnStatusScreen() {
 // =============================================================================
 void AppController::renderLoginScreen() {
     uiRenderer.clear(TFT_BLACK);
-
     uiRenderer.drawHeader("LOGIN", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
 
     uiRenderer.drawText("AUTENTICACAO DO TECNICO (SCR-003)", 8, 24, TFT_YELLOW, 1);
@@ -197,7 +253,7 @@ void AppController::renderLoginScreen() {
         uiRenderer.drawFastHLine(cursorX, 51, 6, TFT_GREEN);
     }
 
-    // Campo 2: Senha (com mascara de asteriscos)
+    // Campo 2: Senha
     bool passActive = (_loginActiveField == 1);
     uint16_t passBoxColor = passActive ? TFT_GREEN : TFT_DARKGRAY;
     uiRenderer.drawText("Senha  :", 8, 66, passActive ? TFT_GREEN : TFT_WHITE, 1);
@@ -213,7 +269,6 @@ void AppController::renderLoginScreen() {
     }
 
     uiRenderer.drawText("Dica: tec.carlos / password", 8, 92, TFT_DARKGRAY, 1);
-
     uiRenderer.drawFooter("[;/.] Campo  [ENTER] Entrar");
 }
 
@@ -222,18 +277,12 @@ void AppController::renderLoginScreen() {
 // =============================================================================
 void AppController::renderOrderListScreen() {
     uiRenderer.clear(TFT_BLACK);
-
     const char* user = sessionManager.isAuthenticated() ? sessionManager.getUsername().c_str() : "tec.carlos";
     uiRenderer.drawHeader("MINHAS ORDENS", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel(), user);
 
-    // Ajusta o offset para rolar quando a lista for maior que o espaco da tela
     int maxVisible = 3;
-    if (_selectedOrderIndex < _scrollOffset) {
-        _scrollOffset = _selectedOrderIndex;
-    }
-    if (_selectedOrderIndex >= _scrollOffset + maxVisible) {
-        _scrollOffset = _selectedOrderIndex - maxVisible + 1;
-    }
+    if (_selectedOrderIndex < _scrollOffset) _scrollOffset = _selectedOrderIndex;
+    if (_selectedOrderIndex >= _scrollOffset + maxVisible) _scrollOffset = _selectedOrderIndex - maxVisible + 1;
 
     int startY = 22;
     for (int i = 0; i < maxVisible; i++) {
@@ -242,10 +291,8 @@ void AppController::renderOrderListScreen() {
 
         const MockOrder& order = _mockOrders[orderIdx];
         bool isSelected = (orderIdx == _selectedOrderIndex);
-
         int boxY = startY + (i * 30);
 
-        // Fundo do item selecionado
         if (isSelected) {
             uiRenderer.fillRect(4, boxY, 232, 28, 0x01E0); // Verde escuro destacado
             uiRenderer.drawRect(4, boxY, 232, 28, TFT_GREEN);
@@ -255,13 +302,11 @@ void AppController::renderOrderListScreen() {
             uiRenderer.drawRect(4, boxY, 232, 28, TFT_DARKGRAY);
         }
 
-        // Linha 1: Numero da OS e Titulo
         char line1[64];
         snprintf(line1, sizeof(line1), "%s: %s", order.orderNumber.c_str(), order.title.c_str());
-        line1[26] = '\0'; // Limita largura
+        line1[26] = '\0';
         uiRenderer.drawText(line1, isSelected ? 16 : 8, boxY + 3, isSelected ? TFT_WHITE : TFT_LIGHTGRAY, 1);
 
-        // Linha 2: Status formatado e prioridade
         uint16_t statusColor = TFT_YELLOW;
         if (order.status == "IN_PROGRESS") statusColor = TFT_CYAN;
         if (order.status == "COMPLETED") statusColor = TFT_GREEN;
@@ -290,12 +335,10 @@ void AppController::renderOrderDetailScreen() {
     }
 
     const MockOrder& order = _mockOrders[_selectedOrderIndex];
-
     char titleBuf[32];
     snprintf(titleBuf, sizeof(titleBuf), "%s", order.orderNumber.c_str());
     uiRenderer.drawHeader(titleBuf, pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
 
-    // Linha 1: Status e Prioridade
     uint16_t statusColor = TFT_YELLOW;
     if (order.status == "IN_PROGRESS") statusColor = TFT_CYAN;
     if (order.status == "COMPLETED") statusColor = TFT_GREEN;
@@ -308,19 +351,15 @@ void AppController::renderOrderDetailScreen() {
     snprintf(prioStr, sizeof(prioStr), "Prio: %s", order.priority.c_str());
     uiRenderer.drawTextRight(prioStr, 232, 23, TFT_WHITE, 1);
 
-    // Linha 2: Equipamento
     uiRenderer.drawText("Equip:", 8, 36, TFT_LIGHTGRAY, 1);
     uiRenderer.drawText(order.equipment.c_str(), 45, 36, TFT_CYAN, 1);
 
-    // Linha 3: Setor
     uiRenderer.drawText("Setor:", 8, 49, TFT_LIGHTGRAY, 1);
     uiRenderer.drawText(order.sector.c_str(), 45, 49, TFT_WHITE, 1);
 
-    // Caixa de Defeito / Problema (com suporte a rolagem)
     uiRenderer.drawFastHLine(6, 62, 228, TFT_DARKGRAY);
     uiRenderer.drawText("Defeito Reportado:", 8, 65, TFT_YELLOW, 1);
 
-    // Quebra a descricao em linhas legiveis
     int startY = 77;
     int maxCharsPerLine = 36;
     int lineCount = 0;
@@ -333,7 +372,6 @@ void AppController::renderOrderDetailScreen() {
         lineCount++;
     }
 
-    // Legenda contextual de atalhos dependendo do status atual
     if (order.status == "ASSIGNED") {
         uiRenderer.drawFooter("[ESC] Voltar     [I] Iniciar OS");
     } else if (order.status == "IN_PROGRESS") {
@@ -344,17 +382,189 @@ void AppController::renderOrderDetailScreen() {
 }
 
 // =============================================================================
+// SCR-006: Confirmacao de Inicio de Atendimento
+// =============================================================================
+void AppController::renderConfirmStartScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    const MockOrder& order = _mockOrders[_selectedOrderIndex];
+    uiRenderer.drawHeader("CONFIRMACAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    uiRenderer.fillRect(8, 24, 224, 86, 0x0014); // Fundo azul escuro de destaque
+    uiRenderer.drawRect(8, 24, 224, 86, TFT_YELLOW);
+
+    uiRenderer.drawTextCenter("INICIAR ATENDIMENTO?", 32, TFT_YELLOW, 1);
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Ordem: %s", order.orderNumber.c_str());
+    uiRenderer.drawTextCenter(buf, 48, TFT_WHITE, 1);
+
+    snprintf(buf, sizeof(buf), "%s", order.equipment.c_str());
+    buf[34] = '\0';
+    uiRenderer.drawTextCenter(buf, 62, TFT_CYAN, 1);
+
+    uiRenderer.drawTextCenter("O horario de inicio sera", 78, TFT_LIGHTGRAY, 1);
+    uiRenderer.drawTextCenter("registrado no servidor.", 90, TFT_LIGHTGRAY, 1);
+
+    uiRenderer.drawFooter("[ESC] Cancelar   [ENTER] Confirmar");
+}
+
+// =============================================================================
+// SCR-007: Formulario de Solucao Tecnica
+// =============================================================================
+void AppController::renderSolutionFormScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    const MockOrder& order = _mockOrders[_selectedOrderIndex];
+    uiRenderer.drawHeader("REGISTRO DE SOLUCAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    // Titulo e contador de caracteres
+    uiRenderer.drawText("Solucao executada:", 8, 23, TFT_YELLOW, 1);
+
+    char cntStr[32];
+    int len = _solutionText.length();
+    snprintf(cntStr, sizeof(cntStr), "%d/500 (min 10)", len);
+    uint16_t cntColor = (len >= 10) ? TFT_GREEN : TFT_ORANGE;
+    uiRenderer.drawTextRight(cntStr, 232, 23, cntColor, 1);
+
+    // Caixa de digitacao de texto
+    uiRenderer.drawRect(6, 36, 228, 58, (len >= 10) ? TFT_GREEN : TFT_DARKGRAY);
+    uiRenderer.fillRect(7, 37, 226, 56, 0x0841);
+
+    // Renderiza o texto com quebra de linha visual
+    int startY = 41;
+    int charsPerLine = 35;
+    for (size_t i = 0; i < _solutionText.length(); i += charsPerLine) {
+        if (startY <= 78) {
+            String chunk = _solutionText.substring(i, min((int)_solutionText.length(), (int)(i + charsPerLine)));
+            uiRenderer.drawText(chunk.c_str(), 10, startY, TFT_WHITE, 1);
+            startY += 12;
+        }
+    }
+    // Cursor piscante
+    if (startY <= 88) {
+        int cursorX = 10 + (_solutionText.length() % charsPerLine) * 6;
+        uiRenderer.drawText("_", cursorX, startY - 1, TFT_GREEN, 1);
+    }
+
+    // Mensagem de aviso se tentar avancar com menos de 10 caracteres
+    if (_solutionWarning) {
+        uiRenderer.drawTextCenter("Minimo de 10 caracteres obrigatorio!", 98, TFT_RED, 1);
+    } else {
+        uiRenderer.drawText("Digite pelo teclado fisico do CardPuter", 8, 100, TFT_DARKGRAY, 1);
+    }
+
+    uiRenderer.drawFooter("[ESC] Voltar     [ENTER] Avancar");
+}
+
+// =============================================================================
+// SCR-008: Confirmacao de Conclusao
+// =============================================================================
+void AppController::renderConfirmCompleteScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    const MockOrder& order = _mockOrders[_selectedOrderIndex];
+    uiRenderer.drawHeader("CONCLUSAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    uiRenderer.fillRect(8, 24, 224, 86, 0x0014);
+    uiRenderer.drawRect(8, 24, 224, 86, TFT_GREEN);
+
+    uiRenderer.drawTextCenter("CONFIRMAR CONCLUSAO DA OS?", 30, TFT_GREEN, 1);
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Ordem: %s", order.orderNumber.c_str());
+    uiRenderer.drawTextCenter(buf, 44, TFT_WHITE, 1);
+
+    uiRenderer.drawText("Solucao registrada:", 14, 58, TFT_YELLOW, 1);
+    String preview = _solutionText;
+    if (preview.length() > 32) preview = preview.substring(0, 29) + "...";
+    uiRenderer.drawText(preview.c_str(), 14, 70, TFT_CYAN, 1);
+
+    uiRenderer.drawTextCenter("Acao definitiva. A OS sera fechada.", 88, TFT_ORANGE, 1);
+
+    uiRenderer.drawFooter("[ESC] Editar     [ENTER] Concluir");
+}
+
+// =============================================================================
+// SCR-009: Feedback de Sucesso
+// =============================================================================
+void AppController::renderSuccessScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("SERVIDOR", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    // Banner verde de sucesso
+    uiRenderer.fillRect(6, 24, 228, 86, 0x02E0); // Verde bandeira escuro
+    uiRenderer.drawRect(6, 24, 228, 86, TFT_GREEN);
+
+    uiRenderer.drawTextCenter("[ OK ] SUCESSO CONFIRMADO", 34, TFT_WHITE, 1);
+    uiRenderer.drawTextCenter(_feedbackTitle.c_str(), 52, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(_feedbackMessage.c_str(), 68, TFT_WHITE, 1);
+
+    char timeBuf[64];
+    snprintf(timeBuf, sizeof(timeBuf), "Gravado em: %s", _feedbackTimestamp.c_str());
+    uiRenderer.drawTextCenter(timeBuf, 88, TFT_LIGHTGRAY, 1);
+
+    uiRenderer.drawFooter("[ENTER] Continuar");
+}
+
+// =============================================================================
+// SCR-010: Alerta de Erro de Comunicacao / Timeout
+// =============================================================================
+void AppController::renderCommErrorScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("ERRO DE REDE", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    uiRenderer.fillRect(6, 24, 228, 86, 0x6000); // Vermelho escuro
+    uiRenderer.drawRect(6, 24, 228, 86, TFT_RED);
+
+    uiRenderer.drawTextCenter("[ FALHA DE COMUNICACAO ]", 34, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(_feedbackTitle.c_str(), 52, TFT_WHITE, 1);
+    uiRenderer.drawTextCenter(_feedbackMessage.c_str(), 68, TFT_LIGHTGRAY, 1);
+    uiRenderer.drawTextCenter("Nenhum estado foi alterado.", 88, TFT_ORANGE, 1);
+
+    uiRenderer.drawFooter("[R] Tentar Novamente   [ESC] Voltar");
+}
+
+// =============================================================================
+// SCR-011: Acesso Negado (403 BOLA / Anti-IDOR)
+// =============================================================================
+void AppController::renderAccessDeniedScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("SEGURANCA", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    uiRenderer.fillRect(6, 24, 228, 86, 0x4800); // Laranja escuro / vermelho
+    uiRenderer.drawRect(6, 24, 228, 86, TFT_ORANGE);
+
+    uiRenderer.drawTextCenter("[ 403 - ACESSO NEGADO ]", 34, TFT_RED, 1);
+    uiRenderer.drawTextCenter("Permissao Insuficiente", 52, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(_feedbackMessage.c_str(), 70, TFT_WHITE, 1);
+
+    uiRenderer.drawFooter("[ENTER] Voltar para Lista");
+}
+
+// =============================================================================
+// SCR-012: Sessao Expirada (401 AUTH_TOKEN_EXPIRED)
+// =============================================================================
+void AppController::renderSessionExpiredScreen() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("SEGURANCA", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+
+    uiRenderer.fillRect(6, 24, 228, 86, 0x4010);
+    uiRenderer.drawRect(6, 24, 228, 86, TFT_YELLOW);
+
+    uiRenderer.drawTextCenter("[ 401 - SESSAO EXPIRADA ]", 34, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter("Credencial JWT Vencida", 52, TFT_WHITE, 1);
+    uiRenderer.drawTextCenter("Faca login novamente no terminal.", 72, TFT_LIGHTGRAY, 1);
+
+    uiRenderer.drawFooter("[ENTER] Ir para Login");
+}
+
+// =============================================================================
 // Processamento de Teclado Fisico do CardPuter
 // =============================================================================
 void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn) {
     _screenNeedsRedraw = true;
-
-    // Tecla global de som para feedback de clique
     HardwareInit::beepKey();
 
     switch (_currentScreen) {
         case SCR_BOOT: {
-            // Qualquer tecla ou Enter avanca
             setScreen(SCR_CONN_STATUS);
             break;
         }
@@ -369,23 +579,19 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
         }
 
         case SCR_LOGIN: {
-            // Teclas de alternancia de campo: ponto e virgula (;), ponto (.), Tab
             if (key == ';' || key == '.' || key == '\t' || key == ',') {
                 _loginActiveField = (_loginActiveField == 0) ? 1 : 0;
             } else if (isDel) {
-                // Backspace / Apagar caractere
                 if (_loginActiveField == 0 && _loginUser.length() > 0) {
                     _loginUser.remove(_loginUser.length() - 1);
                 } else if (_loginActiveField == 1 && _loginPass.length() > 0) {
                     _loginPass.remove(_loginPass.length() - 1);
                 }
             } else if (isEnter) {
-                // Confirmar login
                 HardwareInit::beepConfirm();
                 sessionManager.setSession("jwt-mock-token-carlos-123", _loginUser, "Carlos Mendes", 1L, 28800UL);
                 setScreen(SCR_ORDER_LIST);
             } else if (key >= 32 && key <= 126) {
-                // Caractere digitavel
                 if (_loginActiveField == 0 && _loginUser.length() < 24) {
                     _loginUser += key;
                 } else if (_loginActiveField == 1 && _loginPass.length() < 24) {
@@ -396,24 +602,13 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
         }
 
         case SCR_ORDER_LIST: {
-            // Seta para cima (;)
             if (key == ';') {
-                if (_selectedOrderIndex > 0) {
-                    _selectedOrderIndex--;
-                }
-            }
-            // Seta para baixo (.)
-            else if (key == '.') {
-                if (_selectedOrderIndex < (int)_mockOrders.size() - 1) {
-                    _selectedOrderIndex++;
-                }
-            }
-            // Enter: abre detalhes da ordem
-            else if (isEnter) {
+                if (_selectedOrderIndex > 0) _selectedOrderIndex--;
+            } else if (key == '.') {
+                if (_selectedOrderIndex < (int)_mockOrders.size() - 1) _selectedOrderIndex++;
+            } else if (isEnter) {
                 setScreen(SCR_ORDER_DETAIL);
-            }
-            // L ou l: Logout
-            else if (key == 'l' || key == 'L') {
+            } else if (key == 'l' || key == 'L') {
                 sessionManager.clearSession();
                 HardwareInit::beepConfirm();
                 setScreen(SCR_LOGIN);
@@ -422,31 +617,113 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
         }
 
         case SCR_ORDER_DETAIL: {
-            // Voltar para a lista (ESC / Del / Backspace)
             if (isDel || key == 27) {
                 setScreen(SCR_ORDER_LIST);
-            }
-            // Rolar texto do defeito com ; e .
-            else if (key == ';') {
+            } else if (key == ';') {
                 if (_detailScrollLine > 0) _detailScrollLine--;
             } else if (key == '.') {
                 _detailScrollLine++;
             }
-            // Iniciar atendimento [I] (se ASSIGNED -> IN_PROGRESS)
+            // Iniciar atendimento [I] (leva para SCR-006 Confirmacao)
             else if ((key == 'i' || key == 'I') && _selectedOrderIndex >= 0) {
                 MockOrder& order = _mockOrders[_selectedOrderIndex];
                 if (order.status == "ASSIGNED") {
-                    order.status = "IN_PROGRESS";
-                    HardwareInit::beepConfirm();
+                    setScreen(SCR_CONFIRM_START);
                 }
             }
-            // Concluir atendimento [C] (se IN_PROGRESS -> COMPLETED)
+            // Concluir atendimento [C] (leva para SCR-007 Registro de Solucao)
             else if ((key == 'c' || key == 'C') && _selectedOrderIndex >= 0) {
                 MockOrder& order = _mockOrders[_selectedOrderIndex];
                 if (order.status == "IN_PROGRESS") {
-                    order.status = "COMPLETED";
-                    HardwareInit::beepConfirm();
+                    _solutionText = "";
+                    _solutionWarning = false;
+                    setScreen(SCR_SOLUTION_FORM);
                 }
+            }
+            // Teclas de demonstracao para inspecionar telas de erro / seguranca:
+            else if (key == 'e' || key == 'E') {
+                showError("Timeout HTTP (5000ms)", "Servidor backend nao respondeu.", SCR_ORDER_DETAIL);
+            } else if (key == 'a' || key == 'A') {
+                showAccessDenied("Ordem de servico atribuida a outro tecnico.");
+            } else if (key == 'x' || key == 'X') {
+                showSessionExpired();
+            }
+            break;
+        }
+
+        case SCR_CONFIRM_START: {
+            if (isEnter && _selectedOrderIndex >= 0) {
+                MockOrder& order = _mockOrders[_selectedOrderIndex];
+                order.status = "IN_PROGRESS";
+                showSuccess("ATENDIMENTO INICIADO", "Status alterado para IN_PROGRESS", SCR_ORDER_DETAIL);
+            } else if (isDel || key == 27) {
+                setScreen(SCR_ORDER_DETAIL);
+            }
+            break;
+        }
+
+        case SCR_SOLUTION_FORM: {
+            if (isDel) {
+                if (_solutionText.length() > 0) {
+                    _solutionText.remove(_solutionText.length() - 1);
+                }
+            } else if (isEnter) {
+                if (_solutionText.length() >= 10) {
+                    setScreen(SCR_CONFIRM_COMPLETE);
+                } else {
+                    _solutionWarning = true;
+                    HardwareInit::beepError();
+                }
+            } else if (key == 27) {
+                setScreen(SCR_ORDER_DETAIL);
+            } else if (key >= 32 && key <= 126) {
+                if (_solutionText.length() < 500) {
+                    _solutionText += key;
+                    _solutionWarning = false;
+                }
+            }
+            break;
+        }
+
+        case SCR_CONFIRM_COMPLETE: {
+            if (isEnter && _selectedOrderIndex >= 0) {
+                MockOrder& order = _mockOrders[_selectedOrderIndex];
+                order.status = "COMPLETED";
+                order.solutionDesc = _solutionText;
+                showSuccess("ORDEM CONCLUIDA", "Status alterado para COMPLETED", SCR_ORDER_LIST);
+            } else if (isDel || key == 27) {
+                setScreen(SCR_SOLUTION_FORM);
+            }
+            break;
+        }
+
+        case SCR_SUCCESS: {
+            if (isEnter) {
+                setScreen(_returnScreen);
+            }
+            break;
+        }
+
+        case SCR_COMM_ERROR: {
+            if (key == 'r' || key == 'R' || isEnter) {
+                setScreen(_returnScreen);
+            } else if (isDel || key == 27) {
+                setScreen(SCR_ORDER_DETAIL);
+            }
+            break;
+        }
+
+        case SCR_ACCESS_DENIED: {
+            if (isEnter || isDel || key == 27) {
+                setScreen(SCR_ORDER_LIST);
+            }
+            break;
+        }
+
+        case SCR_SESSION_EXPIRED: {
+            if (isEnter) {
+                sessionManager.clearSession();
+                setScreen(SCR_LOGIN);
             }
             break;
         }
