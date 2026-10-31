@@ -5,9 +5,6 @@ import java.io.IOException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -25,25 +22,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterUnitTest {
 
-    @Mock
-    private JwtService jwtService;
-
-    @Mock
-    private CustomUserDetailsService userDetailsService;
-
-    private JwtAuthenticationFilter filter;
     private SecurityConfig securityConfig;
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(jwtService, userDetailsService);
-        securityConfig = new SecurityConfig(filter, userDetailsService, null);
+        securityConfig = new SecurityConfig(null, null, null);
         objectMapper = new ObjectMapper();
     }
 
@@ -56,8 +43,14 @@ class JwtAuthenticationFilterUnitTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain filterChain = new MockFilterChain();
 
-        when(jwtService.extractUsername(expiredToken)).thenThrow(new ExpiredJwtException(null, null, "Token expired"));
+        JwtService stubJwtService = new JwtService() {
+            @Override
+            public String extractUsername(String token) {
+                throw new ExpiredJwtException(null, null, "Token expired");
+            }
+        };
 
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(stubJwtService, null);
         filter.doFilterInternal(request, response, filterChain);
 
         assertEquals(Boolean.TRUE, request.getAttribute(JwtAuthenticationFilter.JWT_EXPIRED_ATTRIBUTE));
