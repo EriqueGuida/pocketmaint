@@ -56,7 +56,7 @@ O ciclo de vida de uma Ordem de Serviço obedece a uma máquina de estados estri
 - **BR-003 — Autorização Anti-IDOR de Atendimento:** O técnico autenticado só pode visualizar detalhes completos, iniciar ou concluir ordens designadas especificamente ao seu ID.
 - **BR-004 — Proibição de Conclusão Direta:** Uma OS não pode saltar de `ASSIGNED` diretamente para `COMPLETED`; a transição intermediária por `IN_PROGRESS` é obrigatória.
 - **BR-005 — Justificativa Técnica Obrigatória na Conclusão:** O fechamento da ordem exige descrição técnica da solução com extensão entre 10 e 500 caracteres.
-- **BR-006 — Proibição de Cancelamento em Estados Terminais:** Ordens em `COMPLETED` ou `CANCELLED` não podem ser canceladas. O cancelamento exige justificativa entre 5 e 255 caracteres.
+- **BR-006 — Proibição de Cancelamento em Estados Terminais:** Ordens em `COMPLETED` ou `CANCELLED` não podem ser canceladas. O cancelamento exige justificativa entre 10 e 300 caracteres.
 - **BR-007 — Idempotência de Transições:** Repetições de requisições de início ou encerramento com a mesma chave/estado retornam `200 OK` sem gerar erros nem duplicar registros de auditoria.
 - **BR-008 — Auditoria Transacional Obrigatória:** Toda transição de estado gera registro imutável em `audit_events` na mesma transação atômica (`@Transactional`).
 - **BR-009 — Inativação em vez de Exclusão Física (Soft Delete):** Setores e Equipamentos nunca sofrem `DELETE` físico se houver registros vinculados; recebem marcação `active = false`.
