@@ -3,6 +3,7 @@
 #include "../hal/HardwareInit.h"
 #include "../net/NetworkManager.h"
 #include "../session/SessionManager.h"
+#include "../api/PocketMaintApiClient.h"
 #include "secrets.h"
 
 AppController appController;
@@ -23,6 +24,10 @@ AppController::AppController()
     , _feedbackTitle("")
     , _feedbackMessage("")
     , _feedbackTimestamp("2026-10-31 19:30:00")
+    , _apiHealthChecked(false)
+    , _apiHealthOnline(false)
+    , _apiHealthStatus("")
+    , _apiServerTime("")
 {
 }
 
@@ -222,14 +227,85 @@ void AppController::renderConnStatusScreen() {
         snprintf(buf, sizeof(buf), "API   : %s", API_BASE_URL);
         uiRenderer.drawText(buf, 8, 80, TFT_CYAN, 1);
 
-        uiRenderer.drawText("Link  : ATIVO (Pronto para login)", 8, 96, TFT_GREEN, 1);
+        if (_apiHealthChecked) {
+            if (_apiHealthOnline) {
+                String healthStr = "Health: " + _apiHealthStatus;
+                uiRenderer.drawText(healthStr.c_str(), 8, 96, TFT_GREEN, 1);
+            } else {
+                String healthStr = "Health: " + _apiHealthStatus;
+                uiRenderer.drawText(healthStr.c_str(), 8, 96, TFT_RED, 1);
+            }
+        } else {
+            uiRenderer.drawText("Link  : ATIVO ([H] Testar /health)", 8, 96, TFT_GREEN, 1);
+        }
     } else {
         uiRenderer.drawText("IP    : Conectando a rede...", 8, 52, TFT_ORANGE, 1);
         uiRenderer.drawText("Sinal : Buscando sinal 2.4 GHz...", 8, 66, TFT_DARKGRAY, 1);
         uiRenderer.drawText("Aguarde a associacao Wi-Fi...", 8, 84, TFT_YELLOW, 1);
     }
 
-    uiRenderer.drawFooter("[ENTER] Login    [R] Reconectar");
+    uiRenderer.drawFooter("[ENTER] Login  [H] Health  [R] Reconectar");
+}
+
+void AppController::doHealthCheck() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("CONEXAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Consultando API /health...", 52, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter("Aguarde resposta do servidor...", 70, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    HealthPayload health;
+    String errorMsg;
+    _apiHealthChecked = true;
+
+    if (apiClient.checkHealth(health, errorMsg)) {
+        _apiHealthOnline = true;
+        _apiHealthStatus = health.status + " (" + health.version + ")";
+        _apiServerTime = health.serverTime;
+        HardwareInit::beepConfirm();
+    } else {
+        _apiHealthOnline = false;
+        _apiHealthStatus = errorMsg;
+        HardwareInit::beepError();
+    }
+    _screenNeedsRedraw = true;
+}
+
+void AppController::doRealLogin() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("LOGIN", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Autenticando via REST...", 48, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter("POST /api/v1/auth/login", 66, TFT_CYAN, 1);
+    uiRenderer.drawTextCenter("Aguarde emissao do JWT...", 84, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    LoginPayload loginPayload;
+    ApiError apiError;
+    bool success = apiClient.login(_loginUser, _loginPass, loginPayload, apiError);
+
+    if (success) {
+        HardwareInit::beepConfirm();
+        _feedbackTitle = "AUTENTICACAO 200 OK";
+        _feedbackMessage = "Bem-vindo, " + loginPayload.fullName;
+        _feedbackTimestamp = "Token gravado na RAM";
+        _returnScreen = SCR_ORDER_LIST;
+        setScreen(SCR_SUCCESS);
+    } else {
+        HardwareInit::beepError();
+        if (apiError.status == 401) {
+            _feedbackTitle = "401 - NAO AUTORIZADO";
+            _feedbackMessage = apiError.userMessage;
+            _feedbackTimestamp = "Credenciais invalidas";
+            _returnScreen = SCR_LOGIN;
+            setScreen(SCR_ACCESS_DENIED);
+        } else {
+            _feedbackTitle = "FALHA DE COMUNICACAO";
+            _feedbackMessage = apiError.userMessage;
+            _feedbackTimestamp = (apiError.status > 0) ? ("HTTP " + String(apiError.status)) : "Timeout de Rede";
+            _returnScreen = SCR_LOGIN;
+            setScreen(SCR_COMM_ERROR);
+        }
+    }
 }
 
 // =============================================================================
@@ -413,7 +489,6 @@ void AppController::renderConfirmStartScreen() {
 // =============================================================================
 void AppController::renderSolutionFormScreen() {
     uiRenderer.clear(TFT_BLACK);
-    const MockOrder& order = _mockOrders[_selectedOrderIndex];
     uiRenderer.drawHeader("REGISTRO DE SOLUCAO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
 
     // Titulo e contador de caracteres
@@ -523,7 +598,7 @@ void AppController::renderCommErrorScreen() {
 }
 
 // =============================================================================
-// SCR-011: Acesso Negado (403 BOLA / Anti-IDOR)
+// SCR-011: Acesso Negado (403 BOLA / Anti-IDOR ou 401 Credenciais)
 // =============================================================================
 void AppController::renderAccessDeniedScreen() {
     uiRenderer.clear(TFT_BLACK);
@@ -532,11 +607,15 @@ void AppController::renderAccessDeniedScreen() {
     uiRenderer.fillRect(6, 24, 228, 86, 0x4800); // Laranja escuro / vermelho
     uiRenderer.drawRect(6, 24, 228, 86, TFT_ORANGE);
 
-    uiRenderer.drawTextCenter("[ 403 - ACESSO NEGADO ]", 34, TFT_RED, 1);
-    uiRenderer.drawTextCenter("Permissao Insuficiente", 52, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter("[ ACESSO RECUSADO ]", 34, TFT_RED, 1);
+    uiRenderer.drawTextCenter(_feedbackTitle.c_str(), 52, TFT_YELLOW, 1);
     uiRenderer.drawTextCenter(_feedbackMessage.c_str(), 70, TFT_WHITE, 1);
 
-    uiRenderer.drawFooter("[ENTER] Voltar para Lista");
+    if (_returnScreen == SCR_LOGIN) {
+        uiRenderer.drawFooter("[ENTER] Voltar para Login");
+    } else {
+        uiRenderer.drawFooter("[ENTER] Voltar para Lista");
+    }
 }
 
 // =============================================================================
@@ -574,6 +653,8 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
                 setScreen(SCR_LOGIN);
             } else if (key == 'r' || key == 'R') {
                 pocketNetworkManager.reconnect();
+            } else if (key == 'h' || key == 'H') {
+                doHealthCheck();
             }
             break;
         }
@@ -588,9 +669,7 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
                     _loginPass.remove(_loginPass.length() - 1);
                 }
             } else if (isEnter) {
-                HardwareInit::beepConfirm();
-                sessionManager.setSession("jwt-mock-token-carlos-123", _loginUser, "Carlos Mendes", 1L, 28800UL);
-                setScreen(SCR_ORDER_LIST);
+                doRealLogin();
             } else if (key >= 32 && key <= 126) {
                 if (_loginActiveField == 0 && _loginUser.length() < 24) {
                     _loginUser += key;
@@ -715,7 +794,7 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
 
         case SCR_ACCESS_DENIED: {
             if (isEnter || isDel || key == 27) {
-                setScreen(SCR_ORDER_LIST);
+                setScreen(_returnScreen);
             }
             break;
         }

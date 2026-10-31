@@ -89,6 +89,15 @@ private:
     String _feedbackMessage;
     String _feedbackTimestamp;
 
+    // Estado de Saude da API REST (GET /api/v1/health)
+    bool _apiHealthChecked;
+    bool _apiHealthOnline;
+    String _apiHealthStatus;
+    String _apiServerTime;
+
+    void doHealthCheck();
+    void doRealLogin();
+
     // Renderizadores especificos de tela
     void renderScreen();
     void renderBootScreen();

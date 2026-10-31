@@ -13,6 +13,7 @@
 #include "hal/HardwareInit.h"
 #include "net/NetworkManager.h"
 #include "session/SessionManager.h"
+#include "api/PocketMaintApiClient.h"
 #include "ui/UiRenderer.h"
 #include "app/AppController.h"
 
@@ -23,13 +24,16 @@ void setup() {
     // 2. Inicializa porta serial USB CDC
     Serial.begin(115200);
     Serial.println("\n================================================");
-    Serial.println("PocketMaint — Milestone 9: Motor Grafico e Telas");
+    Serial.println("PocketMaint — Milestone 11: HTTP Client & Auth");
     Serial.println("================================================\n");
 
     // 3. Inicializa rádio Wi-Fi
     pocketNetworkManager.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    // 4. Inicializa o controlador de telas e dados mockados
+    // 4. Inicializa o cliente HTTP REST
+    apiClient.begin(API_BASE_URL);
+
+    // 5. Inicializa o controlador de telas e dados mockados
     appController.begin();
 }
 

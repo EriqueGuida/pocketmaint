@@ -102,6 +102,9 @@ Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem 
 - **[x] Milestone 9 (Motor Gráfico e Navegação de Telas — UiRenderer & AppController):** Máquina de estados de interface no CardPuter ADV com telas `SCR-001` a `SCR-005` (Splash, Diagnóstico de Rede, Formulário de Login com máscara de senha, Lista de Ordens com rolagem e Detalhamento da Ordem com controle de atendimento), renderizadas com zero flicker via double-buffering em RAM (`M5Canvas`).
 - **[x] Milestone 10 (Formulários de Ação e Telas de Confirmação):** Implementação e teste no dispositivo das telas `SCR-006` (confirmação prévia de início de atendimento), `SCR-007` (formulário de solução técnica com buffer de teclado em tempo real e contador `X/500`, exigindo mínimo de 10 caracteres conforme BR-005), `SCR-008` (confirmação prévia de conclusão), `SCR-009` (alerta verde de sucesso com timestamp), `SCR-010` (alerta vermelho de timeout/falha de rede), `SCR-011` (alerta de acesso negado / BOLA Anti-IDOR 403) e `SCR-012` (alerta de sessão expirada 401 `AUTH_TOKEN_EXPIRED`).
 
+### 3.5 Fase 5 — Integração Fim a Fim (CardPuter ↔ Backend)
+- **[x] Milestone 11 (Cliente HTTP e Autenticação Real — PocketMaintApiClient):** Implementação do cliente HTTP RESTful nativo para ESP32 (`HTTPClient`) e serializador/desserializador JSON (`PayloadCodec` via ArduinoJson v7). Integração do endpoint de disponibilidade `GET /api/v1/health` e autenticação com `POST /api/v1/auth/login`, armazenando o Bearer Token JWT na sessão volátil em RAM do `SessionManager` e tratando respostas semânticas de erro da RFC 9457 (401 `AUTH_REQUIRED` e timeouts de rede).
+
 ---
 
 ## 4. Como Executar o Backend Localmente
@@ -267,4 +270,6 @@ Esta galeria documenta a evolução fotográfica real do firmware executando dir
 | **Milestone 10**<br>*(Formulários & Ações)* | **SCR-007: Buffer de Teclado e Contador**<br>Digitação contínua via teclado físico de 56 teclas com contador dinâmico de caracteres (`X/500`) e borda verde. | <img src="docs/img/cardputer-screen-solution-typed-m10.jpg" width="300"> |
 | **Milestone 10**<br>*(Formulários & Ações)* | **SCR-008: Confirmação Prévia de Conclusão**<br>Tela de guarda e confirmação com resumo da solução digitada antes do disparo ao servidor. | <img src="docs/img/cardputer-screen-confirm-complete-m10.jpg" width="300"> |
 | **Milestone 10**<br>*(Formulários & Ações)* | **SCR-009: Feedback Transacional de Sucesso**<br>Faixa verde com retorno de status `COMPLETED` confirmado com carimbo de data/hora do servidor. | <img src="docs/img/cardputer-screen-feedback-success-m10.jpg" width="300"> |
+| **Milestone 11**<br>*(Integração REST)* | **SCR-002: Diagnóstico de Conexão e API**<br>Validação de conectividade com a API Spring Boot em `192.168.101.17:9090` e atalho de verificação de saúde (`[H] Health`). | <img src="docs/img/cardputer-screen-network-m11.jpg" width="300"> |
+| **Milestone 11**<br>*(Integração REST)* | **SCR-009: Autenticação Real 200 OK**<br>Recepção do Bearer Token JWT real emitido pelo backend Spring Boot, gravação em RAM e identificação do técnico (`Carlos Mendes`). | <img src="docs/img/cardputer-screen-auth-success-m11.jpg" width="300"> |
 
