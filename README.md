@@ -1,8 +1,13 @@
 # PocketMaint — Backend de Ordens de Serviço de Manutenção
 
->  **Status do Repositório — Backend Concluído, Refinado e Blindado**  
+> 📌 **Status do Repositório — Backend e Firmware Integrados**  
 > **Versão:** `1.1.0` | **Tag de Release:** `v1.1.0-backend`  
-> Este repositório contém a implementação completa da API RESTful do **PocketMaint**, estruturada para servir tanto terminais portáteis industriais (**M5Stack CardPuter ADV**) quanto interfaces web administrativas de supervisão de manutenção.
+> Este repositório contém a implementação completa do **PocketMaint**, integrando a API RESTful em Spring Boot com o terminal portátil industrial (**M5Stack CardPuter ADV**).
+
+<div align="center">
+  <img src="docs/img/cardputer-bringup-val01.jpg" alt="PocketMaint rodando no M5Stack CardPuter ADV" width="480">
+  <p><em>M5Stack CardPuter ADV executando o firmware PocketMaint (Validação Física de Hardware — VAL-01)</em></p>
+</div>
 
 ---
 
@@ -83,6 +88,10 @@ Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem 
 - **[x] Milestone 3 (Identidade Canônica):** Migração do pacote raiz para `br.com.pocketmaint`, renomeação do `artifactId` para `pocketmaint-backend` e classe principal para `PocketMaintApplication`.
 - **[x] Milestone 4 (Testes Unitários de Domínio):** Criação de suíte de testes de unidade (`OrderStateMachineUnitTest`) cobrindo 100% das transições válidas, transições proibidas (BR-004, BR-006), validações de borda (BR-005) e idempotência (BR-007).
 - **[x] Milestone 5 (Testes de Integração Anti-IDOR e RBAC):** Implementação de suíte MockMvc (`OrderSecurityIntegrationTest`) validando isolamento de fila de ordens por técnico (AC-001), barreira anti-IDOR/BOLA (BR-003 / AC-002), restrições de permissão por perfil (RBAC) e idempotência com auditoria (AC-006). *(Tag: `v1.1.0-backend`)*
+
+### 3.3 Fase 3 — Primeiro Contato e Bring-up do CardPuter ADV
+- **[x] Milestone 6 (Ambiente de Firmware e Conexão USB):** Configuração do projeto PlatformIO com ESP32-S3 (`m5stack-cardputer`), comunicação USB CDC serial e dependências oficiais (`M5Cardputer`, `M5Unified`, `M5GFX`, `ArduinoJson`).
+- **[x] Milestone 7 (Validação Física do Hardware — VAL-01):** Sketch de diagnóstico e validação em bancada, validando com 100% de sucesso o display TFT LCD 240x135, medição de bateria e matriz de 56 teclas do teclado físico.
 
 ---
 
