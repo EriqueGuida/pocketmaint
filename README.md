@@ -1,7 +1,7 @@
 # PocketMaint — Backend de Ordens de Serviço de Manutenção
 
-> 📌 **Status do Repositório — Backend Concluído com Sucesso**  
-> **Versão:** `1.0.0` | **Tag de Conclusão:** `v1.0.0-backend`  
+>  **Status do Repositório — Backend Concluído, Refinado e Blindado**  
+> **Versão:** `1.1.0` | **Tag de Release:** `v1.1.0-backend`  
 > Este repositório contém a implementação completa da API RESTful do **PocketMaint**, estruturada para servir tanto terminais portáteis industriais (**M5Stack CardPuter ADV**) quanto interfaces web administrativas de supervisão de manutenção.
 
 ---
@@ -65,8 +65,9 @@ O ciclo de vida de uma Ordem de Serviço obedece a uma máquina de estados estri
 
 ## 3. Roteiro Incremental de Milestones (Histórico de Entrega)
 
-Todas as metas estabelecidas no plano de modernização foram integralmente cumpridas:
+Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem foram integralmente cumpridas:
 
+### 3.1 Fase 1 — Construção da API e Infraestrutura
 - **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
 - **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
 - **[x] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
@@ -74,22 +75,45 @@ Todas as metas estabelecidas no plano de modernização foram integralmente cump
 - **[x] Milestone 4:** Spring Security, autenticação JWT, emissão de sessão (`/api/v1/auth`) e autorização RBAC anti-IDOR.
 - **[x] Milestone 5:** Padronização RFC 9457 (`GlobalExceptionHandler`), `/api/v1/health` e endpoints de técnico (`/me/orders`, `/start`, `/complete`), migração dos DTOs para Java 17 records.
 - **[x] Milestone 6:** Endpoints de supervisor/admin (criação, atribuição, cancelamento, auditoria e gestão de ativos com exclusão lógica).
-- **[x] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento do backend. *(Tag: `v1.0.0-backend`)*
+- **[x] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento da fase 1. *(Tag: `v1.0.0-backend`)*
+
+### 3.2 Fase 2 — Refinamento, Blindagem de Domínio e Testes Automatizados
+- **[x] Milestone 1 (Refinamento de DTOs e Docker):** Alinhamento das restrições dos DTOs com o schema (`OrderCancellationRequest` com `10-300` caracteres, `ServiceOrderRequest` com `title 5-60` e `problemDescription 10-500`) e criação do ambiente Docker local (`docker-compose.yml` com MySQL 8).
+- **[x] Milestone 2 (Segurança e RFC 9457):** Captura explícita de `ExpiredJwtException` no `JwtAuthenticationFilter`, retornando o código de máquina `AUTH_TOKEN_EXPIRED` (401), e padronização do JSON de autenticação com campo `timestamp`.
+- **[x] Milestone 3 (Identidade Canônica):** Migração do pacote raiz para `br.com.pocketmaint`, renomeação do `artifactId` para `pocketmaint-backend` e classe principal para `PocketMaintApplication`.
+- **[x] Milestone 4 (Testes Unitários de Domínio):** Criação de suíte de testes de unidade (`OrderStateMachineUnitTest`) cobrindo 100% das transições válidas, transições proibidas (BR-004, BR-006), validações de borda (BR-005) e idempotência (BR-007).
+- **[x] Milestone 5 (Testes de Integração Anti-IDOR e RBAC):** Implementação de suíte MockMvc (`OrderSecurityIntegrationTest`) validando isolamento de fila de ordens por técnico (AC-001), barreira anti-IDOR/BOLA (BR-003 / AC-002), restrições de permissão por perfil (RBAC) e idempotência com auditoria (AC-006). *(Tag: `v1.1.0-backend`)*
 
 ---
 
 ## 4. Como Executar o Backend Localmente
 
 ### Pré-requisitos:
-* **Java Development Kit (JDK):** Versão 17 LTS instalada e acessível no terminal (`java -version`).
-* **Banco de Dados:** Servidor MySQL 8.x em execução na porta padrão `3306`.
-* **Criação do Banco de Dados:**
-  ```sql
-  CREATE DATABASE IF NOT EXISTS ordens_servico CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-  ```
+* **Java Development Kit (JDK):** Versão 17 LTS ou superior instalada (`java -version`).
+* **Docker & Docker Compose** (ou MySQL 8 local instalado).
 
-### Variáveis de Ambiente e Configuração:
-O arquivo `src/main/resources/application.properties` está preparado com fallbacks automáticos para desenvolvimento local:
+### 4.1 Inicializando o Banco de Dados com Docker Compose (Recomendado):
+O projeto inclui um `docker-compose.yml` pré-configurado na raiz para inicializar o MySQL 8.0:
+
+```powershell
+# Subir o MySQL em background na porta 3306:
+docker compose up -d
+
+# Para pausar o container:
+docker compose stop
+
+# Para derrubar o container:
+docker compose down
+```
+
+### 4.2 Inicializando com MySQL Local Manual:
+Caso prefira utilizar um servidor MySQL já instalado na sua máquina:
+```sql
+CREATE DATABASE IF NOT EXISTS ordens_servico CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 4.3 Variáveis de Ambiente e Configuração:
+O arquivo `src/main/resources/application.properties` possui fallbacks para desenvolvimento:
 
 ```properties
 spring.datasource.url=${DB_URL:jdbc:mysql://localhost:3306/ordens_servico?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
@@ -98,23 +122,38 @@ spring.datasource.password=${DB_PASSWORD:}
 server.port=9090
 ```
 
-Se o seu MySQL local exigir usuário ou senha específicos:
+### 4.4 Inicialização da Aplicação:
 ```powershell
-# Exemplo no PowerShell (Windows):
-$env:DB_USERNAME="root"
-$env:DB_PASSWORD="SuaSenhaAqui"
+# PowerShell (Windows):
 .\mvnw.cmd spring-boot:run
-```
-```bash
-# Exemplo no Bash (Linux / macOS):
-export DB_USERNAME="root"
-export DB_PASSWORD="SuaSenhaAqui"
+
+# Bash (Linux / macOS):
 ./mvnw spring-boot:run
 ```
 
 ---
 
-## 5. Credenciais Iniciais de Teste (Migração Flyway V2)
+## 5. Como Executar a Suíte de Testes Automatizados
+
+O projeto conta com mais de 30 testes automatizados cobrindo regras de negócio, validações de borda, segurança JWT e controle de acesso anti-IDOR:
+
+```powershell
+# Executar todos os testes no Windows:
+.\mvnw.cmd test
+
+# Executar todos os testes no Linux ou macOS:
+./mvnw test
+```
+
+### Suítes de Teste Incluídas:
+* **`DtoValidationUnitTest`:** Validação de contratos e regras de tamanho com Hibernate Validator.
+* **`OrderStateMachineUnitTest`:** 15 testes de unidade da máquina de estados (ciclo de vida completo, transições ilegais, regras de negócio e idempotência BR-007).
+* **`JwtAuthenticationFilterUnitTest`:** Validação de tratamento de tokens JWT ausentes, malformados e expirados (`AUTH_TOKEN_EXPIRED`).
+* **`OrderSecurityIntegrationTest`:** 10 testes de integração MockMvc para barreiras Anti-IDOR (AC-002), restrições de perfis RBAC, fila exclusiva do técnico (AC-001) e auditoria transacional idempotente (AC-006).
+
+---
+
+## 6. Credenciais Iniciais de Teste (Migração Flyway V2)
 
 Ao iniciar a aplicação pela primeira vez, as migrações Flyway (`V1__create_initial_schema.sql` e `V2__seed_dev_data.sql`) estruturam o banco e inserem usuários de teste com senhas criptografadas em **BCrypt**:
 
@@ -127,7 +166,7 @@ Ao iniciar a aplicação pela primeira vez, as migrações Flyway (`V1__create_i
 
 ---
 
-## 6. Documentação Interativa OpenAPI / Swagger UI
+## 7. Documentação Interativa OpenAPI / Swagger UI
 
 A documentação interativa da API está disponível diretamente no navegador assim que o servidor é iniciado:
 
@@ -144,7 +183,7 @@ A documentação interativa da API está disponível diretamente no navegador as
 
 ---
 
-## 7. Catálogo Canônico de Endpoints da API
+## 8. Catálogo Canônico de Endpoints da API
 
 | Código | Método | Rota | Perfis Permitidos | Descrição |
 | :---: | :---: | :--- | :---: | :--- |
@@ -164,18 +203,27 @@ A documentação interativa da API está disponível diretamente no navegador as
 
 ---
 
-## 8. Padronização de Erros (RFC 9457)
+## 9. Padronização de Erros (RFC 9457)
 
 Qualquer falha de requisição ou violação de regra de negócio devolve respostas uniformes no padrão canônico RFC 9457:
 
 ```json
 {
-  "timestamp": "2026-10-30T17:15:00Z",
+  "timestamp": "2026-10-31T16:20:00Z",
   "status": 403,
   "errorCode": "ACCESS_DENIED_NOT_OWNER",
   "title": "Acesso negado ao recurso",
   "userMessage": "Esta ordem de serviço não está atribuída ao seu usuário.",
-  "path": "/api/v1/orders/42",
+  "path": "/api/v1/orders/10",
   "fieldErrors": []
 }
 ```
+
+### Principais Códigos de Máquina (`errorCode`):
+* `AUTH_TOKEN_EXPIRED`: Token JWT vencido (HTTP 401), orienta o CardPuter a reautenticar.
+* `AUTH_REQUIRED`: Token JWT ausente, malformado ou credenciais inválidas (HTTP 401).
+* `ACCESS_DENIED_NOT_OWNER`: Violação de barreira Anti-IDOR/BOLA (HTTP 403).
+* `ACCESS_DENIED_INSUFFICIENT_ROLE`: Tentativa de acesso sem papel exigido (HTTP 403).
+* `INVALID_ORDER_STATE_TRANSITION`: Tentativa de transição proibida na máquina de estados (HTTP 409).
+* `RESOURCE_NOT_FOUND`: Entidade não encontrada por ID (HTTP 404).
+* `VALIDATION_FAILED`: Parâmetros ou campos de entrada fora do contrato (HTTP 422).
