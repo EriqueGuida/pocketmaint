@@ -5,12 +5,12 @@
 > Este repositório contém a implementação completa do **PocketMaint**, integrando a API RESTful em Spring Boot com o terminal portátil industrial (**M5Stack CardPuter ADV**).
 
 <p align="center">
-  <img src="docs/img/cardputer-bringup-val01.jpg" alt="Bring-up de Hardware e Teclado (Milestone 7)" width="48%">
+  <img src="docs/img/cardputer-screen-orders-m09.jpg" alt="Lista de Ordens de Serviço (SCR-004)" width="48%">
   &nbsp;
-  <img src="docs/img/cardputer-wifi-infra-m08.jpg" alt="Conexão Wi-Fi e Infraestrutura (Milestone 8)" width="48%">
+  <img src="docs/img/cardputer-screen-detail-m09.jpg" alt="Detalhes da Ordem e Atendimento (SCR-005)" width="48%">
 </p>
 <p align="center">
-  <em>À esquerda: Validação física de hardware e teclado (Milestone 7 / VAL-01). À direita: Conexão Wi-Fi estável com double-buffering e infraestrutura (Milestone 8).</em>
+  <em>M5Stack CardPuter ADV executando o PocketMaint: Fila de ordens com rolagem e cursor (esquerda) e tela de atendimento com defeito reportado (direita).</em>
 </p>
 
 ---
@@ -99,6 +99,7 @@ Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem 
 
 ### 3.4 Fase 4 — Construção Modular do Firmware Embarcado
 - **[x] Milestone 8 (Módulos de Infraestrutura — Wi-Fi, Bateria e Sessão em RAM):** Criação dos módulos arquiteturais `HardwareInit`, `PocketNetworkManager` e `SessionManager`, isolamento de credenciais (`secrets.example.h`), eliminação de flickering via Double-Buffering (`M5Canvas` em RAM) e conexão estável ao Wi-Fi 2.4 GHz com monitoramento de IP local e RSSI.
+- **[x] Milestone 9 (Motor Gráfico e Navegação de Telas — UiRenderer & AppController):** Máquina de estados de interface no CardPuter ADV com telas `SCR-001` a `SCR-005` (Splash, Diagnóstico de Rede, Formulário de Login com máscara de senha, Lista de Ordens com rolagem e Detalhamento da Ordem com controle de atendimento), renderizadas com zero flicker via double-buffering em RAM (`M5Canvas`).
 
 ---
 
@@ -243,3 +244,19 @@ Qualquer falha de requisição ou violação de regra de negócio devolve respos
 * `INVALID_ORDER_STATE_TRANSITION`: Tentativa de transição proibida na máquina de estados (HTTP 409).
 * `RESOURCE_NOT_FOUND`: Entidade não encontrada por ID (HTTP 404).
 * `VALIDATION_FAILED`: Parâmetros ou campos de entrada fora do contrato (HTTP 422).
+
+---
+
+## 10. Museu & Galeria de Evolução de Hardware (Bancada Real)
+
+Esta galeria documenta a evolução fotográfica real do firmware executando diretamente no **M5Stack CardPuter ADV** durante o ciclo de desenvolvimento:
+
+| Marco / Etapa | Tela no CardPuter | Registro Fotográfico em Bancada |
+| :--- | :--- | :---: |
+| **Milestone 7**<br>*(Bring-up de Hardware)* | **VAL-01: Diagnóstico Inicial**<br>Primeira inicialização do display ST7789V2, validação de leitura da bateria e teste de resposta das 56 teclas físicas. | <img src="docs/img/cardputer-bringup-val01.jpg" width="300"> |
+| **Milestone 8**<br>*(Infraestrutura & Rede)* | **SCR-002: Associação Wi-Fi 2.4 GHz**<br>Conexão com roteador local, medição de sinal (RSSI) e alocação de sessão volátil em RAM. | <img src="docs/img/cardputer-wifi-infra-m08.jpg" width="300"> |
+| **Milestone 9**<br>*(Interface de Usuário)* | **SCR-002: Diagnóstico de Conexão**<br>Exibição de IP local, força de sinal excelente (-32 dBm) e prontidão de link para login. | <img src="docs/img/cardputer-screen-network-m09.jpg" width="300"> |
+| **Milestone 9**<br>*(Interface de Usuário)* | **SCR-003: Autenticação Segura**<br>Formulário de credenciais do técnico com máscara de asteriscos (`*`) e navegação de campos. | <img src="docs/img/cardputer-screen-login-m09.jpg" width="300"> |
+| **Milestone 9**<br>*(Interface de Usuário)* | **SCR-004: Fila de Ordens Atribuídas**<br>Lista com cursor direcional (`>`), tags de status (`ASSIGNED`, `IN_PROGRESS`) e nível de criticidade. | <img src="docs/img/cardputer-screen-orders-m09.jpg" width="300"> |
+| **Milestone 9**<br>*(Interface de Usuário)* | **SCR-005: Detalhes da Ordem de Serviço**<br>Visualização de equipamento, setor, defeito com rolagem vertical e atalho (`[I] Iniciar OS`). | <img src="docs/img/cardputer-screen-detail-m09.jpg" width="300"> |
+
