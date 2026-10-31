@@ -3,6 +3,7 @@ package br.com.aberturaordensservico.security;
 import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,13 +18,19 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import jakarta.servlet.http.HttpServletResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+import br.com.aberturaordensservico.dto.ApiErrorResponse;
 
 @Configuration
 @EnableWebSecurity
@@ -32,10 +39,23 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final CustomUserDetailsService userDetailsService;
+    private final ObjectMapper objectMapper;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, CustomUserDetailsService userDetailsService) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthFilter,
+            CustomUserDetailsService userDetailsService,
+            @Autowired(required = false) ObjectMapper objectMapper
+    ) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.userDetailsService = userDetailsService;
+        this.objectMapper = objectMapper != null ? objectMapper : createDefaultObjectMapper();
+    }
+
+    private static ObjectMapper createDefaultObjectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return mapper;
     }
 
     @Bean
@@ -54,20 +74,8 @@ public class SecurityConfig {
 
                 // Tratamento de falha de autenticação (retorna 401 sem redirecionar para tela HTML)
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint((request, response, authException) -> {
-                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                            response.setContentType("application/json;charset=UTF-8");
-                            response.getWriter().write(
-                                    "{\"status\":401,\"errorCode\":\"AUTH_REQUIRED\",\"title\":\"Autenticação necessária\",\"userMessage\":\"Token Bearer ausente ou inválido.\",\"path\":\"" + request.getRequestURI() + "\"}"
-                            );
-                        })
-                        .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            response.setStatus(HttpStatus.FORBIDDEN.value());
-                            response.setContentType("application/json;charset=UTF-8");
-                            response.getWriter().write(
-                                    "{\"status\":403,\"errorCode\":\"ACCESS_DENIED_INSUFFICIENT_ROLE\",\"title\":\"Acesso negado\",\"userMessage\":\"Perfil de usuário sem permissão para este recurso.\",\"path\":\"" + request.getRequestURI() + "\"}"
-                            );
-                        })
+                        .authenticationEntryPoint(authenticationEntryPoint())
+                        .accessDeniedHandler(accessDeniedHandler())
                 )
 
                 // Regras de autorização por endpoint
@@ -109,6 +117,53 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, authException) -> {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            response.setContentType("application/json;charset=UTF-8");
+
+            boolean isExpired = Boolean.TRUE.equals(request.getAttribute(JwtAuthenticationFilter.JWT_EXPIRED_ATTRIBUTE))
+                    || Boolean.TRUE.equals(request.getAttribute("token_expired"));
+
+            ApiErrorResponse error;
+            if (isExpired) {
+                error = new ApiErrorResponse(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "AUTH_TOKEN_EXPIRED",
+                        "Token de autenticação expirado",
+                        "O token de acesso informado está expirado. Efetue login novamente.",
+                        request.getRequestURI()
+                );
+            } else {
+                error = new ApiErrorResponse(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "AUTH_REQUIRED",
+                        "Autenticação necessária",
+                        "Token Bearer ausente ou inválido.",
+                        request.getRequestURI()
+                );
+            }
+            response.getWriter().write(objectMapper.writeValueAsString(error));
+        };
+    }
+
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) -> {
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+            response.setContentType("application/json;charset=UTF-8");
+            ApiErrorResponse error = new ApiErrorResponse(
+                    HttpStatus.FORBIDDEN.value(),
+                    "ACCESS_DENIED_INSUFFICIENT_ROLE",
+                    "Acesso negado",
+                    "Perfil de usuário sem permissão para este recurso.",
+                    request.getRequestURI()
+            );
+            response.getWriter().write(objectMapper.writeValueAsString(error));
+        };
     }
 
     @Bean
