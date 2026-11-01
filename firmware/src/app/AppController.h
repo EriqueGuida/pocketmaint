@@ -97,6 +97,10 @@ private:
 
     void doHealthCheck();
     void doRealLogin();
+    void loadRealOrders();
+    void loadRealOrderDetail(long orderId);
+    void doStartOrder();
+    void doCompleteOrder();
 
     // Renderizadores especificos de tela
     void renderScreen();

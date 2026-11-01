@@ -104,6 +104,7 @@ Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem 
 
 ### 3.5 Fase 5 — Integração Fim a Fim (CardPuter ↔ Backend)
 - **[x] Milestone 11 (Cliente HTTP e Autenticação Real — PocketMaintApiClient):** Implementação do cliente HTTP RESTful nativo para ESP32 (`HTTPClient`) e serializador/desserializador JSON (`PayloadCodec` via ArduinoJson v7). Integração do endpoint de disponibilidade `GET /api/v1/health` e autenticação com `POST /api/v1/auth/login`, armazenando o Bearer Token JWT na sessão volátil em RAM do `SessionManager` e tratando respostas semânticas de erro da RFC 9457 (401 `AUTH_REQUIRED` e timeouts de rede).
+- **[x] Milestone 12 (Ciclo Operacional Completo de Campo):** Consumo real da fila de ordens atribuídas via `GET /api/v1/me/orders` (`SCR-004`), consulta detalhada com descrição real do defeito via `GET /api/v1/orders/{id}` (`SCR-005`), início de atendimento via `POST /api/v1/orders/{id}/start` com header `Idempotency-Key` (`SCR-006` $\rightarrow$ `SCR-009`) e conclusão de ordem via `POST /api/v1/orders/{id}/complete` enviando justificativa técnica digitada no teclado físico (`SCR-007` $\rightarrow$ `SCR-008` $\rightarrow$ `SCR-009`), com resiliência estrita a quedas de Wi-Fi (`SCR-010`) sem falsos positivos locais (requisito NFR-001).
 
 ---
 
@@ -272,4 +273,5 @@ Esta galeria documenta a evolução fotográfica real do firmware executando dir
 | **Milestone 10**<br>*(Formulários & Ações)* | **SCR-009: Feedback Transacional de Sucesso**<br>Faixa verde com retorno de status `COMPLETED` confirmado com carimbo de data/hora do servidor. | <img src="docs/img/cardputer-screen-feedback-success-m10.jpg" width="300"> |
 | **Milestone 11**<br>*(Integração REST)* | **SCR-002: Diagnóstico de Conexão e API**<br>Validação de conectividade com a API Spring Boot em `192.168.101.17:9090` e atalho de verificação de saúde (`[H] Health`). | <img src="docs/img/cardputer-screen-network-m11.jpg" width="300"> |
 | **Milestone 11**<br>*(Integração REST)* | **SCR-009: Autenticação Real 200 OK**<br>Recepção do Bearer Token JWT real emitido pelo backend Spring Boot, gravação em RAM e identificação do técnico (`Carlos Mendes`). | <img src="docs/img/cardputer-screen-auth-success-m11.jpg" width="300"> |
+| **Milestone 12**<br>*(Ciclo de Campo)* | **SCR-004: Fila Real de Ordens (API)**<br>Consulta real ao endpoint `/api/v1/me/orders` exibindo estado de fila sem ordens atribuídas e atalhos de atualização (`[R] Recarregar`). | <img src="docs/img/cardputer-screen-empty-orders-m12.jpg" width="300"> |
 

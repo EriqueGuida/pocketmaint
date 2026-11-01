@@ -39,54 +39,6 @@ void AppController::begin() {
 
 void AppController::initMockData() {
     _mockOrders.clear();
-
-    _mockOrders.push_back({
-        1L,
-        "OS-2026-0001",
-        "Substituir rolamento motor",
-        "ASSIGNED",
-        "ALTA",
-        "Compressor Parafuso (EQ-100)",
-        "Setor Industrial (SEC-01)",
-        "Equipamento apresentando vibracao excessiva no mancal do motor principal. Substituir conjunto de rolamentos e filtro de oleo lubrificante conforme manual.",
-        ""
-    });
-
-    _mockOrders.push_back({
-        2L,
-        "OS-2026-0002",
-        "Calibracao sensor pressao",
-        "IN_PROGRESS",
-        "CRITICA",
-        "Torno CNC 02 (EQ-104)",
-        "Usinagem de Precisao (SEC-02)",
-        "Pressostato de seguranca indicando corte indevido da bomba refrigerante. Necessario calibrar ponto de desarme e inspecionar fiacao do sensor.",
-        ""
-    });
-
-    _mockOrders.push_back({
-        3L,
-        "OS-2026-0003",
-        "Troca retentor hidraulico",
-        "ASSIGNED",
-        "MEDIA",
-        "Prensa Hidraulica 50T (EQ-108)",
-        "Estamparia Pesada (SEC-03)",
-        "Vazamento visivel de fluido no cilindro de compressao. Substituir gaxetas de vedacao e verificar nivel do reservatorio ISO VG 68.",
-        ""
-    });
-
-    _mockOrders.push_back({
-        4L,
-        "OS-2026-0004",
-        "Inspecao preventiva geral",
-        "ASSIGNED",
-        "BAIXA",
-        "Furadeira Radial (EQ-112)",
-        "Manutencao Geral (SEC-01)",
-        "Lubrificacao das guias lineares e verificacao da folga da arvore de furacao. Intervencao semestral programada.",
-        ""
-    });
 }
 
 void AppController::setScreen(ScreenId screen) {
@@ -308,6 +260,175 @@ void AppController::doRealLogin() {
     }
 }
 
+void AppController::loadRealOrders() {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("ORDENS", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Consultando fila de ordens...", 48, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter("GET /api/v1/me/orders", 66, TFT_CYAN, 1);
+    uiRenderer.drawTextCenter("Aguarde resposta do servidor...", 84, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    std::vector<OrderItem> apiOrders;
+    ApiError apiError;
+    bool success = apiClient.fetchMyOrders(apiOrders, apiError);
+
+    if (success) {
+        _mockOrders.clear();
+        for (const auto& item : apiOrders) {
+            MockOrder o;
+            o.id = item.id;
+            o.orderNumber = item.orderNumber;
+            o.title = item.title;
+            o.status = item.status;
+            o.priority = item.priority;
+            o.equipment = item.equipmentName.length() > 0 ? (item.equipmentName + " (" + item.equipmentTag + ")") : item.equipmentTag;
+            o.sector = item.sectorCode;
+            o.problemDesc = "Carregando detalhes do servidor...";
+            o.solutionDesc = "";
+            _mockOrders.push_back(o);
+        }
+        _selectedOrderIndex = 0;
+        _scrollOffset = 0;
+        HardwareInit::beepConfirm();
+        setScreen(SCR_ORDER_LIST);
+    } else {
+        HardwareInit::beepError();
+        if (apiError.status == 401) {
+            showSessionExpired();
+            return;
+        }
+        _feedbackTitle = "FALHA AO CARREGAR ORDENS";
+        _feedbackMessage = apiError.userMessage;
+        _feedbackTimestamp = (apiError.status > 0) ? ("HTTP " + String(apiError.status)) : "Timeout de Rede";
+        _returnScreen = SCR_ORDER_LIST;
+        setScreen(SCR_COMM_ERROR);
+    }
+}
+
+void AppController::loadRealOrderDetail(long orderId) {
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("DETALHES", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Carregando detalhes da OS...", 48, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(("GET /api/v1/orders/" + String(orderId)).c_str(), 66, TFT_CYAN, 1);
+    uiRenderer.drawTextCenter("Consultando banco...", 84, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    OrderDetail detail;
+    ApiError apiError;
+    bool success = apiClient.fetchOrderDetail(orderId, detail, apiError);
+
+    if (success) {
+        if (_selectedOrderIndex >= 0 && _selectedOrderIndex < (int)_mockOrders.size()) {
+            MockOrder& o = _mockOrders[_selectedOrderIndex];
+            o.problemDesc = detail.problemDescription;
+            o.solutionDesc = detail.solutionDescription;
+            o.equipment = detail.equipment;
+            o.sector = detail.sector;
+            o.status = detail.status;
+            o.priority = detail.priority;
+        }
+        _detailScrollLine = 0;
+        HardwareInit::beepConfirm();
+        setScreen(SCR_ORDER_DETAIL);
+    } else {
+        HardwareInit::beepError();
+        if (apiError.status == 401) {
+            showSessionExpired();
+        } else if (apiError.status == 403) {
+            showAccessDenied(apiError.userMessage);
+        } else {
+            _feedbackTitle = "FALHA DE COMUNICACAO";
+            _feedbackMessage = apiError.userMessage;
+            _feedbackTimestamp = (apiError.status > 0) ? ("HTTP " + String(apiError.status)) : "Timeout de Rede";
+            _returnScreen = SCR_ORDER_LIST;
+            setScreen(SCR_COMM_ERROR);
+        }
+    }
+}
+
+void AppController::doStartOrder() {
+    if (_selectedOrderIndex < 0 || _selectedOrderIndex >= (int)_mockOrders.size()) return;
+    MockOrder& order = _mockOrders[_selectedOrderIndex];
+
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("INICIANDO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Iniciando atendimento...", 48, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(("POST /api/v1/orders/" + String(order.id) + "/start").c_str(), 66, TFT_CYAN, 1);
+    uiRenderer.drawTextCenter("Gravando startedAt no servidor...", 84, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    OrderActionResult result;
+    ApiError apiError;
+    bool success = apiClient.startOrder(order.id, result, apiError);
+
+    if (success) {
+        HardwareInit::beepConfirm();
+        // Atualiza estado LOCAL apenas apos confirmacao do servidor (NFR-001)
+        order.status = "IN_PROGRESS";
+        _feedbackTitle = "ATENDIMENTO INICIADO";
+        _feedbackMessage = "Status alterado para IN_PROGRESS";
+        _feedbackTimestamp = result.timestamp;
+        _returnScreen = SCR_ORDER_DETAIL;
+        setScreen(SCR_SUCCESS);
+    } else {
+        HardwareInit::beepError();
+        // Importante: status permanece ASSIGNED! Sem falsos positivos
+        if (apiError.status == 401) {
+            showSessionExpired();
+        } else if (apiError.status == 403) {
+            showAccessDenied(apiError.userMessage);
+        } else {
+            _feedbackTitle = "FALHA DE COMUNICACAO";
+            _feedbackMessage = apiError.userMessage;
+            _feedbackTimestamp = (apiError.status > 0) ? ("HTTP " + String(apiError.status)) : "Nenhum estado alterado";
+            _returnScreen = SCR_ORDER_DETAIL;
+            setScreen(SCR_COMM_ERROR);
+        }
+    }
+}
+
+void AppController::doCompleteOrder() {
+    if (_selectedOrderIndex < 0 || _selectedOrderIndex >= (int)_mockOrders.size()) return;
+    MockOrder& order = _mockOrders[_selectedOrderIndex];
+
+    uiRenderer.clear(TFT_BLACK);
+    uiRenderer.drawHeader("CONCLUINDO", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel());
+    uiRenderer.drawTextCenter("Enviando solucao tecnica...", 48, TFT_YELLOW, 1);
+    uiRenderer.drawTextCenter(("POST /api/v1/orders/" + String(order.id) + "/complete").c_str(), 66, TFT_CYAN, 1);
+    uiRenderer.drawTextCenter("Finalizando OS no servidor...", 84, TFT_LIGHTGRAY, 1);
+    uiRenderer.flush();
+
+    OrderActionResult result;
+    ApiError apiError;
+    bool success = apiClient.completeOrder(order.id, _solutionText, result, apiError);
+
+    if (success) {
+        HardwareInit::beepConfirm();
+        // Atualiza estado LOCAL apenas apos confirmacao do servidor (NFR-001)
+        order.status = "COMPLETED";
+        order.solutionDesc = _solutionText;
+        _feedbackTitle = "ORDEM CONCLUIDA";
+        _feedbackMessage = "Status alterado para COMPLETED";
+        _feedbackTimestamp = result.timestamp;
+        _returnScreen = SCR_ORDER_LIST;
+        setScreen(SCR_SUCCESS);
+    } else {
+        HardwareInit::beepError();
+        // Importante: status permanece IN_PROGRESS! Sem falsos positivos
+        if (apiError.status == 401) {
+            showSessionExpired();
+        } else if (apiError.status == 403) {
+            showAccessDenied(apiError.userMessage);
+        } else {
+            _feedbackTitle = "FALHA DE COMUNICACAO";
+            _feedbackMessage = apiError.userMessage;
+            _feedbackTimestamp = (apiError.status > 0) ? ("HTTP " + String(apiError.status)) : "Nenhum estado alterado";
+            _returnScreen = SCR_SOLUTION_FORM;
+            setScreen(SCR_COMM_ERROR);
+        }
+    }
+}
+
 // =============================================================================
 // SCR-003: Formulario de Login
 // =============================================================================
@@ -356,6 +477,13 @@ void AppController::renderOrderListScreen() {
     const char* user = sessionManager.isAuthenticated() ? sessionManager.getUsername().c_str() : "tec.carlos";
     uiRenderer.drawHeader("MINHAS ORDENS", pocketNetworkManager.isConnected(), HardwareInit::getBatteryLevel(), user);
 
+    if (_mockOrders.empty()) {
+        uiRenderer.drawTextCenter("Nenhuma ordem atribuida", 52, TFT_YELLOW, 1);
+        uiRenderer.drawTextCenter("Pressione [R] para consultar", 70, TFT_LIGHTGRAY, 1);
+        uiRenderer.drawFooter("[R] Recarregar    [L] Logout");
+        return;
+    }
+
     int maxVisible = 3;
     if (_selectedOrderIndex < _scrollOffset) _scrollOffset = _selectedOrderIndex;
     if (_selectedOrderIndex >= _scrollOffset + maxVisible) _scrollOffset = _selectedOrderIndex - maxVisible + 1;
@@ -396,7 +524,7 @@ void AppController::renderOrderListScreen() {
         uiRenderer.drawTextRight(priorityTag, 230, boxY + 15, TFT_WHITE, 1);
     }
 
-    uiRenderer.drawFooter("[;/.] Sel  [ENTER] Detalhe  [L] Sair");
+    uiRenderer.drawFooter("[;/.] Sel  [ENTER] Detalhe  [R] Recarregar");
 }
 
 // =============================================================================
@@ -685,8 +813,10 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
                 if (_selectedOrderIndex > 0) _selectedOrderIndex--;
             } else if (key == '.') {
                 if (_selectedOrderIndex < (int)_mockOrders.size() - 1) _selectedOrderIndex++;
-            } else if (isEnter) {
-                setScreen(SCR_ORDER_DETAIL);
+            } else if (isEnter && !_mockOrders.empty()) {
+                loadRealOrderDetail(_mockOrders[_selectedOrderIndex].id);
+            } else if (key == 'r' || key == 'R') {
+                loadRealOrders();
             } else if (key == 'l' || key == 'L') {
                 sessionManager.clearSession();
                 HardwareInit::beepConfirm();
@@ -719,6 +849,10 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
                     setScreen(SCR_SOLUTION_FORM);
                 }
             }
+            // Recarregar detalhes via API [R]
+            else if ((key == 'r' || key == 'R') && _selectedOrderIndex >= 0) {
+                loadRealOrderDetail(_mockOrders[_selectedOrderIndex].id);
+            }
             // Teclas de demonstracao para inspecionar telas de erro / seguranca:
             else if (key == 'e' || key == 'E') {
                 showError("Timeout HTTP (5000ms)", "Servidor backend nao respondeu.", SCR_ORDER_DETAIL);
@@ -732,9 +866,7 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
 
         case SCR_CONFIRM_START: {
             if (isEnter && _selectedOrderIndex >= 0) {
-                MockOrder& order = _mockOrders[_selectedOrderIndex];
-                order.status = "IN_PROGRESS";
-                showSuccess("ATENDIMENTO INICIADO", "Status alterado para IN_PROGRESS", SCR_ORDER_DETAIL);
+                doStartOrder();
             } else if (isDel || key == 27) {
                 setScreen(SCR_ORDER_DETAIL);
             }
@@ -766,10 +898,7 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
 
         case SCR_CONFIRM_COMPLETE: {
             if (isEnter && _selectedOrderIndex >= 0) {
-                MockOrder& order = _mockOrders[_selectedOrderIndex];
-                order.status = "COMPLETED";
-                order.solutionDesc = _solutionText;
-                showSuccess("ORDEM CONCLUIDA", "Status alterado para COMPLETED", SCR_ORDER_LIST);
+                doCompleteOrder();
             } else if (isDel || key == 27) {
                 setScreen(SCR_SOLUTION_FORM);
             }
@@ -778,7 +907,11 @@ void AppController::handleKeyPress(char key, bool isDel, bool isEnter, bool isFn
 
         case SCR_SUCCESS: {
             if (isEnter) {
-                setScreen(_returnScreen);
+                if (_returnScreen == SCR_ORDER_LIST) {
+                    loadRealOrders();
+                } else {
+                    setScreen(_returnScreen);
+                }
             }
             break;
         }

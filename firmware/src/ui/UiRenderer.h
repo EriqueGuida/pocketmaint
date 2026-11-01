@@ -35,6 +35,12 @@ public:
     void drawText(const char* text, int x, int y, uint16_t color = TFT_WHITE, uint8_t size = 1);
     void drawTextRight(const char* text, int x, int y, uint16_t color = TFT_WHITE, uint8_t size = 1);
     void drawTextCenter(const char* text, int y, uint16_t color = TFT_WHITE, uint8_t size = 1);
+
+    // Overloads para Arduino String / StringSumHelper
+    void drawText(const String& text, int x, int y, uint16_t color = TFT_WHITE, uint8_t size = 1) { drawText(text.c_str(), x, y, color, size); }
+    void drawTextRight(const String& text, int x, int y, uint16_t color = TFT_WHITE, uint8_t size = 1) { drawTextRight(text.c_str(), x, y, color, size); }
+    void drawTextCenter(const String& text, int y, uint16_t color = TFT_WHITE, uint8_t size = 1) { drawTextCenter(text.c_str(), y, color, size); }
+
     void drawRect(int x, int y, int w, int h, uint16_t color);
     void fillRect(int x, int y, int w, int h, uint16_t color);
     void drawFastHLine(int x, int y, int w, uint16_t color);

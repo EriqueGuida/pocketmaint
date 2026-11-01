@@ -115,3 +115,191 @@ bool PocketMaintApiClient::login(const String& username, const String& password,
 
     return false;
 }
+
+bool PocketMaintApiClient::fetchMyOrders(std::vector<OrderItem>& outOrders, ApiError& outError) {
+    if (!pocketNetworkManager.isConnected()) {
+        outError.status = 0;
+        outError.errorCode = "WIFI_DISCONNECTED";
+        outError.title = "Sem Conexao";
+        outError.userMessage = "Wi-Fi nao conectado.";
+        _lastHttpCode = 0;
+        return false;
+    }
+
+    HTTPClient http;
+    configureClient(http, "/api/v1/me/orders?status=ASSIGNED,IN_PROGRESS&page=0&size=10");
+    http.addHeader("Authorization", sessionManager.getAuthorizationHeader());
+    http.addHeader("X-Origin-Channel", "CARDPUTER_TERMINAL");
+
+    int httpCode = http.GET();
+    _lastHttpCode = httpCode;
+
+    if (httpCode <= 0) {
+        outError.status = 0;
+        outError.errorCode = "HTTP_TIMEOUT";
+        outError.title = "Falha de Conexao";
+        outError.userMessage = "Timeout ao consultar ordens.";
+        http.end();
+        return false;
+    }
+
+    String responseBody = http.getString();
+    http.end();
+
+    if (httpCode == 200) {
+        return PayloadCodec::decodePagedOrders(responseBody, outOrders, outError);
+    }
+
+    if (!PayloadCodec::decodeErrorResponse(responseBody, outError)) {
+        outError.status = httpCode;
+        outError.errorCode = "HTTP_ERROR";
+        outError.title = "Erro ao buscar ordens";
+        outError.userMessage = "HTTP " + String(httpCode);
+    }
+
+    return false;
+}
+
+bool PocketMaintApiClient::fetchOrderDetail(long orderId, OrderDetail& outDetail, ApiError& outError) {
+    if (!pocketNetworkManager.isConnected()) {
+        outError.status = 0;
+        outError.errorCode = "WIFI_DISCONNECTED";
+        outError.title = "Sem Conexao";
+        outError.userMessage = "Wi-Fi nao conectado.";
+        _lastHttpCode = 0;
+        return false;
+    }
+
+    HTTPClient http;
+    String endpoint = "/api/v1/orders/" + String(orderId);
+    configureClient(http, endpoint);
+    http.addHeader("Authorization", sessionManager.getAuthorizationHeader());
+    http.addHeader("X-Origin-Channel", "CARDPUTER_TERMINAL");
+
+    int httpCode = http.GET();
+    _lastHttpCode = httpCode;
+
+    if (httpCode <= 0) {
+        outError.status = 0;
+        outError.errorCode = "HTTP_TIMEOUT";
+        outError.title = "Falha de Conexao";
+        outError.userMessage = "Timeout ao carregar detalhes.";
+        http.end();
+        return false;
+    }
+
+    String responseBody = http.getString();
+    http.end();
+
+    if (httpCode == 200) {
+        return PayloadCodec::decodeOrderDetail(responseBody, outDetail, outError);
+    }
+
+    if (!PayloadCodec::decodeErrorResponse(responseBody, outError)) {
+        outError.status = httpCode;
+        outError.errorCode = (httpCode == 403) ? "ACCESS_DENIED_NOT_OWNER" : "HTTP_ERROR";
+        outError.title = (httpCode == 403) ? "Acesso Negado" : "Erro no Servidor";
+        outError.userMessage = (httpCode == 403) ? "Ordem nao atribuida a voce." : ("HTTP " + String(httpCode));
+    }
+
+    return false;
+}
+
+bool PocketMaintApiClient::startOrder(long orderId, OrderActionResult& outResult, ApiError& outError) {
+    if (!pocketNetworkManager.isConnected()) {
+        outError.status = 0;
+        outError.errorCode = "WIFI_DISCONNECTED";
+        outError.title = "Sem Conexao";
+        outError.userMessage = "Wi-Fi nao conectado.";
+        _lastHttpCode = 0;
+        return false;
+    }
+
+    HTTPClient http;
+    String endpoint = "/api/v1/orders/" + String(orderId) + "/start";
+    configureClient(http, endpoint);
+    http.addHeader("Authorization", sessionManager.getAuthorizationHeader());
+    http.addHeader("X-Origin-Channel", "CARDPUTER_TERMINAL");
+    
+    // Idempotency-Key
+    String idempKey = "cp-start-" + String(orderId) + "-" + String(millis());
+    http.addHeader("Idempotency-Key", idempKey);
+
+    int httpCode = http.POST("{}");
+    _lastHttpCode = httpCode;
+
+    if (httpCode <= 0) {
+        outError.status = 0;
+        outError.errorCode = "HTTP_TIMEOUT";
+        outError.title = "Falha de Comunicacao";
+        outError.userMessage = "Timeout ao iniciar atendimento.";
+        http.end();
+        return false;
+    }
+
+    String responseBody = http.getString();
+    http.end();
+
+    if (httpCode == 200) {
+        return PayloadCodec::decodeOrderActionResult(responseBody, outResult, outError);
+    }
+
+    if (!PayloadCodec::decodeErrorResponse(responseBody, outError)) {
+        outError.status = httpCode;
+        outError.errorCode = "HTTP_ERROR";
+        outError.title = "Falha ao iniciar";
+        outError.userMessage = "HTTP " + String(httpCode);
+    }
+
+    return false;
+}
+
+bool PocketMaintApiClient::completeOrder(long orderId, const String& solution, OrderActionResult& outResult, ApiError& outError) {
+    if (!pocketNetworkManager.isConnected()) {
+        outError.status = 0;
+        outError.errorCode = "WIFI_DISCONNECTED";
+        outError.title = "Sem Conexao";
+        outError.userMessage = "Wi-Fi nao conectado.";
+        _lastHttpCode = 0;
+        return false;
+    }
+
+    HTTPClient http;
+    String endpoint = "/api/v1/orders/" + String(orderId) + "/complete";
+    configureClient(http, endpoint);
+    http.addHeader("Authorization", sessionManager.getAuthorizationHeader());
+    http.addHeader("X-Origin-Channel", "CARDPUTER_TERMINAL");
+    
+    // Idempotency-Key
+    String idempKey = "cp-complete-" + String(orderId) + "-" + String(millis());
+    http.addHeader("Idempotency-Key", idempKey);
+
+    String requestBody = PayloadCodec::encodeCompleteOrderRequest(solution);
+    int httpCode = http.POST(requestBody);
+    _lastHttpCode = httpCode;
+
+    if (httpCode <= 0) {
+        outError.status = 0;
+        outError.errorCode = "HTTP_TIMEOUT";
+        outError.title = "Falha de Comunicacao";
+        outError.userMessage = "Timeout ao concluir ordem.";
+        http.end();
+        return false;
+    }
+
+    String responseBody = http.getString();
+    http.end();
+
+    if (httpCode == 200) {
+        return PayloadCodec::decodeOrderActionResult(responseBody, outResult, outError);
+    }
+
+    if (!PayloadCodec::decodeErrorResponse(responseBody, outError)) {
+        outError.status = httpCode;
+        outError.errorCode = "HTTP_ERROR";
+        outError.title = "Falha ao concluir";
+        outError.userMessage = "HTTP " + String(httpCode);
+    }
+
+    return false;
+}
