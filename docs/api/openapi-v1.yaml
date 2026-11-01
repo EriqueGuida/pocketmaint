@@ -1,0 +1,699 @@
+openapi: 3.0.3
+info:
+  title: PocketMaint API — Sistema de Ordens de Servico de Manutencao
+  description: >
+    API RESTful corporativa para gestao transacional, despacho de ordens de servico
+    industriais e integracao fim a fim com terminais portateis M5Stack CardPuter ADV.
+  version: 1.1.0
+  contact:
+    name: Equipe PocketMaint
+servers:
+  - url: http://localhost:9090
+    description: Servidor de Desenvolvimento Local
+  - url: http://192.168.101.17:9090
+    description: Servidor em Rede Local (Bancada de Hardware)
+
+tags:
+  - name: Health
+    description: Verificacao de disponibilidade e telemetria da aplicacao (EP-001)
+  - name: Authentication
+    description: Autenticacao e gestao de sessao via Bearer Token JWT (EP-002 e EP-003)
+  - name: Technician Orders
+    description: Operacoes de campo no CardPuter ADV e controle anti-IDOR (EP-004 a EP-007)
+  - name: Admin & Supervisor Orders
+    description: Abertura, despacho, cancelamento e auditoria transacional (EP-008 a EP-010)
+  - name: Assets
+    description: Gestao de Setores e Equipamentos com exclusao logica (Soft Delete)
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: EP-001 - Disponibilidade do sistema
+      description: Retorna o status de saude, versao e horario UTC do servidor.
+      responses:
+        '200':
+          description: Servico operacional
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: EP-002 - Login e emissao de credencial JWT
+      description: Autentica credenciais (username/password) e emite Bearer Token com 8 horas de validade.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticacao bem-sucedida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credenciais invalidas (RFC 9457)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+
+  /api/v1/auth/me:
+    get:
+      tags: [Authentication]
+      summary: EP-003 - Identificacao da sessao ativa
+      description: Retorna dados do usuario autenticado no token JWT.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dados do usuario logado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/me/orders:
+    get:
+      tags: [Technician Orders]
+      summary: EP-004 - Listar ordens atribuidas ao tecnico
+      description: Retorna fila paginada e enxuta para consumo pelo terminal CardPuter.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filtro de estados (ex: ASSIGNED,IN_PROGRESS)
+          schema:
+            type: string
+            default: ASSIGNED,IN_PROGRESS
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Lista paginada de ordens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedOrdersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/orders/{orderId}:
+    get:
+      tags: [Technician Orders]
+      summary: EP-005 - Consultar detalhes da ordem de servico
+      description: Consulta completa com controle de acesso Anti-IDOR/BOLA (BR-003).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Detalhes completos da ordem
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/orders/{orderId}/start:
+    post:
+      tags: [Technician Orders]
+      summary: EP-006 - Iniciar atendimento presencial
+      description: Transiciona estado de ASSIGNED para IN_PROGRESS com suporte a Idempotency-Key.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Origin-Channel
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [CARDPUTER_TERMINAL, WEB_PORTAL, API_CLIENT]
+      responses:
+        '200':
+          description: Atendimento iniciado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderActionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Transicao de estado invalida (BR-004)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+
+  /api/v1/orders/{orderId}/complete:
+    post:
+      tags: [Technician Orders]
+      summary: EP-007 - Concluir ordem com solucao tecnica
+      description: Transiciona estado de IN_PROGRESS para COMPLETED com validacao de 10 a 500 caracteres (BR-005).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: X-Origin-Channel
+          in: header
+          required: false
+          schema:
+            type: string
+            enum: [CARDPUTER_TERMINAL, WEB_PORTAL, API_CLIENT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCompletionRequest'
+      responses:
+        '200':
+          description: Ordem concluida com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderActionResponse'
+        '400':
+          description: Violacao de tamanho da solucao (BR-005)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Transicao ilegal (ex: salto direto de ASSIGNED para COMPLETED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+
+  /api/v1/orders:
+    post:
+      tags: [Admin & Supervisor Orders]
+      summary: EP-008 - Criar nova ordem de servico
+      description: Abertura de ordem vinculada a equipamento ativo (BR-001).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceOrderRequest'
+      responses:
+        '201':
+          description: Ordem criada em estado OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCreatedResponse'
+
+  /api/v1/orders/{orderId}/assign:
+    post:
+      tags: [Admin & Supervisor Orders]
+      summary: EP-009 - Atribuir tecnico responsavel
+      description: Transiciona estado para ASSIGNED e vincula usuario com perfil TECHNICIAN (BR-002).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderAssignmentRequest'
+      responses:
+        '200':
+          description: Tecnico atribuido com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAssignmentResponse'
+
+  /api/v1/orders/{orderId}/cancel:
+    post:
+      tags: [Admin & Supervisor Orders]
+      summary: EP-010 - Cancelar ordem de servico
+      description: Cancela ordem nao-terminal exigindo justificativa de 10 a 300 caracteres (BR-006).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCancellationRequest'
+      responses:
+        '200':
+          description: Ordem cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderCancellationResponse'
+
+  /api/v1/orders/{orderId}/audit:
+    get:
+      tags: [Admin & Supervisor Orders]
+      summary: Consultar trilha de auditoria
+      description: Retorna lista cronologica imutavel de eventos de auditoria transacional (BR-008).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Trilha de auditoria da ordem
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEventResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Insira o token JWT retornado pelo endpoint /api/v1/auth/login
+
+  responses:
+    Unauthorized:
+      description: Token ausente, invalido ou expirado (AUTH_TOKEN_EXPIRED / AUTH_REQUIRED)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    Forbidden:
+      description: Acesso negado por perfil ou barreira anti-IDOR/BOLA (BR-003)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    NotFound:
+      description: Recurso nao localizado por ID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: UP
+        service:
+          type: string
+          example: PocketMaint API
+        version:
+          type: string
+          example: 1.1.0
+        serverTime:
+          type: string
+          format: date-time
+          example: "2026-10-31T20:30:00Z"
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: tec.carlos
+        password:
+          type: string
+          example: password
+        clientChannel:
+          type: string
+          example: CARDPUTER_M5
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresInSeconds:
+          type: integer
+          format: int64
+          example: 28800
+        user:
+          $ref: '#/components/schemas/UserSummaryDto'
+
+    UserSummaryDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 3
+        username:
+          type: string
+          example: tec.carlos
+        fullName:
+          type: string
+          example: Carlos Mendes
+        role:
+          type: string
+          example: ROLE_TECHNICIAN
+
+    UserMeResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 3
+        username:
+          type: string
+          example: tec.carlos
+        fullName:
+          type: string
+          example: Carlos Mendes
+        role:
+          type: string
+          example: ROLE_TECHNICIAN
+        active:
+          type: boolean
+          example: true
+
+    PagedOrdersResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 10
+        totalElements:
+          type: integer
+          example: 2
+        totalPages:
+          type: integer
+          example: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSummaryItemDto'
+
+    OrderSummaryItemDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        orderNumber:
+          type: string
+          example: OS-2026-0001
+        title:
+          type: string
+          example: Substituir rolamento motor
+        status:
+          type: string
+          example: ASSIGNED
+        priority:
+          type: string
+          example: ALTA
+        equipmentAssetTag:
+          type: string
+          example: EQ-100
+        equipmentName:
+          type: string
+          example: Compressor Parafuso
+        sectorCode:
+          type: string
+          example: SEC-01
+
+    OrderDetailDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        orderNumber:
+          type: string
+          example: OS-2026-0001
+        title:
+          type: string
+          example: Substituir rolamento motor
+        problemDescription:
+          type: string
+          example: Equipamento apresentando vibracao excessiva no mancal do motor principal.
+        solutionDescription:
+          type: string
+          nullable: true
+          example: Substituicao de rolamento realizada com sucesso.
+        status:
+          type: string
+          example: ASSIGNED
+        priority:
+          type: string
+          example: ALTA
+        equipment:
+          type: object
+          properties:
+            id: { type: integer }
+            assetTag: { type: string, example: EQ-100 }
+            name: { type: string, example: Compressor Parafuso }
+            model: { type: string, example: CP-500 }
+        sector:
+          type: object
+          properties:
+            id: { type: integer }
+            code: { type: string, example: SEC-01 }
+            name: { type: string, example: Setor Industrial }
+        assignedTechnician:
+          type: object
+          properties:
+            id: { type: integer }
+            fullName: { type: string, example: Carlos Mendes }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+
+    OrderCompletionRequest:
+      type: object
+      required: [solutionDescription]
+      properties:
+        solutionDescription:
+          type: string
+          minLength: 10
+          maxLength: 500
+          example: Substituicao de rolamento realizada conforme manual tecnico.
+
+    OrderActionResponse:
+      type: object
+      properties:
+        orderId:
+          type: integer
+          format: int64
+          example: 1
+        orderNumber:
+          type: string
+          example: OS-2026-0001
+        status:
+          type: string
+          example: IN_PROGRESS
+        startedAt:
+          type: string
+          format: date-time
+          example: "2026-10-31T20:30:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        attendanceDurationMinutes:
+          type: integer
+          format: int64
+          nullable: true
+        solutionDescription:
+          type: string
+          nullable: true
+        version:
+          type: integer
+          example: 1
+        message:
+          type: string
+          example: Atendimento iniciado com sucesso.
+
+    ServiceOrderRequest:
+      type: object
+      required: [equipmentId, title, problemDescription, priority]
+      properties:
+        equipmentId: { type: integer, format: int64, example: 1 }
+        title: { type: string, minLength: 5, maxLength: 60, example: Falha de pressao no circuito }
+        problemDescription: { type: string, minLength: 10, maxLength: 500, example: Pressao oscilando acima do limiar. }
+        priority: { type: string, enum: [BAIXA, MEDIA, ALTA, CRITICA], example: ALTA }
+
+    OrderAssignmentRequest:
+      type: object
+      required: [technicianId]
+      properties:
+        technicianId: { type: integer, format: int64, example: 3 }
+
+    OrderAssignmentResponse:
+      type: object
+      properties:
+        orderId: { type: integer, format: int64, example: 1 }
+        orderNumber: { type: string, example: OS-2026-0001 }
+        status: { type: string, example: ASSIGNED }
+        assignedTechnicianId: { type: integer, format: int64, example: 3 }
+        assignedTechnicianName: { type: string, example: Carlos Mendes }
+        assignedAt: { type: string, format: date-time }
+        message: { type: string, example: Tecnico atribuido com sucesso. }
+
+    OrderCancellationRequest:
+      type: object
+      required: [justification]
+      properties:
+        justification:
+          type: string
+          minLength: 10
+          maxLength: 300
+          example: Ordem cancelada devido a manutencao preventiva ja realizada.
+
+    OrderCancellationResponse:
+      type: object
+      properties:
+        orderId: { type: integer, format: int64, example: 1 }
+        orderNumber: { type: string, example: OS-2026-0001 }
+        status: { type: string, example: CANCELLED }
+        cancelledAt: { type: string, format: date-time }
+        cancellationJustification: { type: string }
+        message: { type: string, example: Ordem cancelada com sucesso. }
+
+    OrderCreatedResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        orderNumber: { type: string, example: OS-2026-0001 }
+        title: { type: string }
+        status: { type: string, example: OPEN }
+        priority: { type: string, example: ALTA }
+        createdAt: { type: string, format: date-time }
+
+    AuditEventResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        orderId: { type: integer, format: int64, example: 1 }
+        eventType: { type: string, example: ORDER_STARTED }
+        actorId: { type: integer, format: int64, example: 3 }
+        actorUsername: { type: string, example: tec.carlos }
+        originChannel: { type: string, example: CARDPUTER_TERMINAL }
+        idempotencyKey: { type: string, example: cp-start-1-1730400000 }
+        description: { type: string }
+        eventTimestamp: { type: string, format: date-time }
+
+    ApiErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-31T20:30:00Z"
+        status:
+          type: integer
+          example: 401
+        errorCode:
+          type: string
+          example: AUTH_REQUIRED
+        title:
+          type: string
+          example: Falha de autenticacao
+        userMessage:
+          type: string
+          example: Credenciais invalidas.
+        path:
+          type: string
+          example: /api/v1/auth/login
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }

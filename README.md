@@ -1,8 +1,23 @@
-# PocketMaint — Backend de Ordens de Serviço de Manutenção
+# PocketMaint — Sistema de Ordens de Serviço Industrial & Terminal Portátil
 
-> 📌 **Status do Repositório — Backend e Firmware Integrados**  
-> **Versão:** `1.1.0` | **Tag de Release:** `v1.1.0-backend`  
-> Este repositório contém a implementação completa do **PocketMaint**, integrando a API RESTful em Spring Boot com o terminal portátil industrial (**M5Stack CardPuter ADV**).
+<p align="left">
+  <img src="https://img.shields.io/badge/Java-17_LTS-007396?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 17" />
+  <img src="https://img.shields.io/badge/Spring_Boot-3.3%2B-6DB33F?style=for-the-badge&logo=springboot&logoColor=white" alt="Spring Boot" />
+  <img src="https://img.shields.io/badge/ESP32--S3-CardPuter_ADV-E7352C?style=for-the-badge&logo=espressif&logoColor=white" alt="ESP32-S3" />
+  <img src="https://img.shields.io/badge/C%2B%2B-PlatformIO-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="C++" />
+  <img src="https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Status-Homologado_em_Hardware-brightgreen?style=for-the-badge" alt="Status" />
+</p>
+
+> 📌 **Status do Repositório — Backend e Firmware Integrados e Homologados**  
+> **Versão:** `1.2.0` | **Tag de Release:** `v1.2.0-full-system`  
+> Este repositório contém a implementação completa do **PocketMaint**, integrando a API RESTful em Spring Boot (Java 17 LTS) com o microterminal portátil industrial (**M5Stack CardPuter ADV / ESP32-S3**).
+> 
+> 📑 **Documentos Centrais do Projeto:**
+> - 📘 **[Especificação Técnica Completa (SPECIFICATION.md)](docs/SPECIFICATION.md)**
+> - 📋 **[Relatório e Checklist de Homologação de Hardware](docs/hardware-acceptance-checklist.md)**
+> - 📄 **[Contrato OpenAPI v3 em YAML](docs/api/openapi-v1.yaml)**
 
 <p align="center">
   <img src="docs/img/cardputer-screen-orders-m09.jpg" alt="Lista de Ordens de Serviço (SCR-004)" width="48%">
@@ -19,8 +34,53 @@
 
 O **PocketMaint** é um sistema transacional com autoridade centralizada para abertura, despacho, atendimento de campo e auditoria de Ordens de Serviço (OS) industriais.
 
-### 1.1 Arquitetura Monólito Modular
-O backend foi concebido sob o padrão de **Monólito Modular** em camadas (*Layered Architecture*), priorizando alta coesão, acoplamento controlado, facilidade de teste e baixa complexidade operacional:
+### 1.1 Diagrama de Arquitetura Fim a Fim (Hardware & Software)
+
+```
+┌─────────────────────────────────┐
+│     M5Stack CardPuter ADV       │
+│  (ESP32-S3 @ 240MHz, FreeRTOS)  │
+│  Display ST7789V2 240x135 px    │
+│  Teclado 56 Teclas / ADC Bat    │
+└────────────────┬────────────────┘
+                 │
+                 │ 802.11 b/g/n (Wi-Fi 2.4 GHz)
+                 │ HTTP/1.1 RESTful JSON
+                 │ Authorization: Bearer <JWT>
+                 │ Idempotency-Key: <UUID>
+                 ▼
+┌────────────────────────────────────────────────────────┐
+│             PocketMaint Backend API                    │
+│      (Spring Boot 3.3.x / Java 17 LTS / Tomcat)        │
+│                                                        │
+│  ┌──────────────────┐    ┌──────────────────────────┐  │
+│  │ Security Filter  │    │  Global Exception (9457) │  │
+│  │ (Stateless JWT)  │    │  (AUTH_TOKEN_EXPIRED)    │  │
+│  └────────┬─────────┘    └────────────┬─────────────┘  │
+│           │                           │                │
+│  ┌────────▼───────────────────────────▼─────────────┐  │
+│  │  REST Controllers (EP-001 a EP-010 / OpenAPI v3) │  │
+│  └────────────────────┬─────────────────────────────┘  │
+│                       │                                │
+│  ┌────────────────────▼─────────────────────────────┐  │
+│  │  Service Layer & State Machine (BR-001 a BR-009) │  │
+│  └────────────────────┬─────────────────────────────┘  │
+│                       │                                │
+│  ┌────────────────────▼─────────────────────────────┐  │
+│  │  Spring Data JPA / Hibernate ORM (MySQL Dialect) │  │
+│  └────────────────────┬─────────────────────────────┘  │
+└───────────────────────┼────────────────────────────────┘
+                        │
+                        │ JDBC (Porta 3306)
+                        ▼
+       ┌─────────────────────────────────┐
+       │     MySQL 8.0 Database          │
+       │  (Flyway Migrations V1 e V2)    │
+       │  ACID Transactions & InnoDB     │
+       └─────────────────────────────────┘
+```
+
+### 1.2 Arquitetura Monólito Modular do Backend
 
 ```
 src/main/java/br/com/pocketmaint/
@@ -37,7 +97,34 @@ src/main/java/br/com/pocketmaint/
 
 ---
 
-## 2. Máquina de Estados e Regras de Negócio
+## 2. Contexto de Origem, Trajetória e Engenharia Assistida por IA
+
+### 2.1 A Origem: Da Sala de Aula ao Chão de Fábrica
+A versão baseline e o embrião deste projeto nasceram em sala de aula durante o meu **Curso Técnico em Desenvolvimento de Sistemas**, logo nas primeiras semanas de contato com o ecossistema **Java e Spring Boot**. O exercício acadêmico original propunha uma estrutura básica para simulação de abertura de ordens de serviço.
+
+A decisão de transformar esse projeto acadêmico em uma solução industrial de ponta a ponta integrada a um microterminal físico (**M5Stack CardPuter ADV**) foi uma iniciativa e experimentação **100% autoral**. 
+
+### 2.2 Primeiro Contato com Embarcados e Pair Programming com IA
+Eu nunca havia programado para microcontroladores ou sistemas embarcados antes deste projeto. Para superar essa barreira técnica e transpor o abismo entre o software corporativo e o hardware físico, utilizei inteligência artificial como um **"Tech Lead / Pair Programmer Virtual"** — especificamente o **Google Antigravity**.
+
+A condução do desenvolvimento não foi passiva: estabelecemos um **ciclo rigoroso de engenharia dividido em 13 Milestones incrementais**, onde cada entrega de firmware e backend foi auditada, compilada e **validada fisicamente em bancada real** com o CardPuter conectado via USB e Wi-Fi antes de avançar para o próximo passo.
+
+### 2.3 Transparência Técnica: Base Consolidada vs. Conhecimentos Acelerados
+
+* **O que faz parte da minha base de compreensão (Sala de Aula & Prática):**
+  * Fundamentos do Spring Boot, arquitetura em camadas (`controller`, `service`, `repository`, `dto`) e anotações do ecossistema Spring MVC.
+  * Modelagem relacional no MySQL, chaves estrangeiras, transições lógicas de entidades e consultas Spring Data JPA.
+  * Princípios de orientação a objetos, interfaces, modularização e validações declarativas (`Bean Validation`).
+
+* **O que foi acelerado e aprofundado com auxílio de IA (Em estudo contínuo na grade):**
+  * **Sistemas Embarcados & C++ no ESP32-S3:** Gestão de periféricos no PlatformIO, resolução de conflitos de bibliotecas globais no Arduino Core 3.x, particionamento customizado de memória Flash (`huge_app.csv`), eliminação de flickering visual via **Double-Buffering em RAM** (`M5Canvas`) e estabilização de leitura ADC de bateria por filtro passa-baixa.
+  * **Docker & Docker Compose:** Criação do ambiente containerizado reprodutível para o banco de dados MySQL 8.0, assunto que ainda não havia sido apresentado na grade curricular do curso técnico.
+  * **Testes Automatizados & Blindagem de Domínio:** Construção de mais de 30 testes unitários (`OrderStateMachineUnitTest`) e de integração com `MockMvc` (`OrderSecurityIntegrationTest`), validando isolamento de fila de técnico (AC-001) e proteção anti-IDOR/BOLA (BR-003).
+  * **Padrões Corporativos:** Implementação do padrão RFC 9457 (*Problem Details*) com captura semântica de tokens JWT expirados (`AUTH_TOKEN_EXPIRED`), suporte ao cabeçalho `Idempotency-Key` e auditoria transacional atômica.
+
+---
+
+## 3. Máquina de Estados e Regras de Negócio
 
 O ciclo de vida de uma Ordem de Serviço obedece a uma máquina de estados estrita com 5 estados formais:
 
@@ -72,11 +159,11 @@ O ciclo de vida de uma Ordem de Serviço obedece a uma máquina de estados estri
 
 ---
 
-## 3. Roteiro Incremental de Milestones (Histórico de Entrega)
+## 4. Roteiro Incremental de Milestones (Histórico de Entrega)
 
 Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem foram integralmente cumpridas:
 
-### 3.1 Fase 1 — Construção da API e Infraestrutura
+### 4.1 Fase 1 — Construção da API e Infraestrutura
 - **[x] Milestone 0:** Publicação do baseline legado acadêmico e documentação inicial. *(Tag: `v0.0.0-baseline-legado`)*
 - **[x] Milestone 1:** Dependências Maven (`pom.xml`), configuração de banco e migrações Flyway (`V1__schema`, `V2__seed`).
 - **[x] Milestone 2:** Entidades de domínio completas (`User`, `ServiceOrder`, `OrderAssignment`, `AuditEvent`), Enums e Repositórios JPA.
@@ -86,35 +173,36 @@ Todas as metas estabelecidas no plano de modernização e no ciclo de blindagem 
 - **[x] Milestone 6:** Endpoints de supervisor/admin (criação, atribuição, cancelamento, auditoria e gestão de ativos com exclusão lógica).
 - **[x] Milestone 7:** Documentação interativa OpenAPI/Swagger UI, finalização do README e encerramento da fase 1. *(Tag: `v1.0.0-backend`)*
 
-### 3.2 Fase 2 — Refinamento, Blindagem de Domínio e Testes Automatizados
+### 4.2 Fase 2 — Refinamento, Blindagem de Domínio e Testes Automatizados
 - **[x] Milestone 1 (Refinamento de DTOs e Docker):** Alinhamento das restrições dos DTOs com o schema (`OrderCancellationRequest` com `10-300` caracteres, `ServiceOrderRequest` com `title 5-60` e `problemDescription 10-500`) e criação do ambiente Docker local (`docker-compose.yml` com MySQL 8).
 - **[x] Milestone 2 (Segurança e RFC 9457):** Captura explícita de `ExpiredJwtException` no `JwtAuthenticationFilter`, retornando o código de máquina `AUTH_TOKEN_EXPIRED` (401), e padronização do JSON de autenticação com campo `timestamp`.
 - **[x] Milestone 3 (Identidade Canônica):** Migração do pacote raiz para `br.com.pocketmaint`, renomeação do `artifactId` para `pocketmaint-backend` e classe principal para `PocketMaintApplication`.
 - **[x] Milestone 4 (Testes Unitários de Domínio):** Criação de suíte de testes de unidade (`OrderStateMachineUnitTest`) cobrindo 100% das transições válidas, transições proibidas (BR-004, BR-006), validações de borda (BR-005) e idempotência (BR-007).
 - **[x] Milestone 5 (Testes de Integração Anti-IDOR e RBAC):** Implementação de suíte MockMvc (`OrderSecurityIntegrationTest`) validando isolamento de fila de ordens por técnico (AC-001), barreira anti-IDOR/BOLA (BR-003 / AC-002), restrições de permissão por perfil (RBAC) e idempotência com auditoria (AC-006). *(Tag: `v1.1.0-backend`)*
 
-### 3.3 Fase 3 — Primeiro Contato e Bring-up do CardPuter ADV
+### 4.3 Fase 3 — Primeiro Contato e Bring-up do CardPuter ADV
 - **[x] Milestone 6 (Ambiente de Firmware e Conexão USB):** Configuração do projeto PlatformIO com ESP32-S3 (`m5stack-cardputer`), comunicação USB CDC serial e dependências oficiais (`M5Cardputer`, `M5Unified`, `M5GFX`, `ArduinoJson`).
 - **[x] Milestone 7 (Validação Física do Hardware — VAL-01):** Sketch de diagnóstico e validação em bancada, validando com 100% de sucesso o display TFT LCD 240x135, medição de bateria e matriz de 56 teclas do teclado físico.
 
-### 3.4 Fase 4 — Construção Modular do Firmware Embarcado
+### 4.4 Fase 4 — Construção Modular do Firmware Embarcado
 - **[x] Milestone 8 (Módulos de Infraestrutura — Wi-Fi, Bateria e Sessão em RAM):** Criação dos módulos arquiteturais `HardwareInit`, `PocketNetworkManager` e `SessionManager`, isolamento de credenciais (`secrets.example.h`), eliminação de flickering via Double-Buffering (`M5Canvas` em RAM) e conexão estável ao Wi-Fi 2.4 GHz com monitoramento de IP local e RSSI.
 - **[x] Milestone 9 (Motor Gráfico e Navegação de Telas — UiRenderer & AppController):** Máquina de estados de interface no CardPuter ADV com telas `SCR-001` a `SCR-005` (Splash, Diagnóstico de Rede, Formulário de Login com máscara de senha, Lista de Ordens com rolagem e Detalhamento da Ordem com controle de atendimento), renderizadas com zero flicker via double-buffering em RAM (`M5Canvas`).
 - **[x] Milestone 10 (Formulários de Ação e Telas de Confirmação):** Implementação e teste no dispositivo das telas `SCR-006` (confirmação prévia de início de atendimento), `SCR-007` (formulário de solução técnica com buffer de teclado em tempo real e contador `X/500`, exigindo mínimo de 10 caracteres conforme BR-005), `SCR-008` (confirmação prévia de conclusão), `SCR-009` (alerta verde de sucesso com timestamp), `SCR-010` (alerta vermelho de timeout/falha de rede), `SCR-011` (alerta de acesso negado / BOLA Anti-IDOR 403) e `SCR-012` (alerta de sessão expirada 401 `AUTH_TOKEN_EXPIRED`).
 
-### 3.5 Fase 5 — Integração Fim a Fim (CardPuter ↔ Backend)
+### 4.5 Fase 5 — Integração Fim a Fim (CardPuter ↔ Backend)
 - **[x] Milestone 11 (Cliente HTTP e Autenticação Real — PocketMaintApiClient):** Implementação do cliente HTTP RESTful nativo para ESP32 (`HTTPClient`) e serializador/desserializador JSON (`PayloadCodec` via ArduinoJson v7). Integração do endpoint de disponibilidade `GET /api/v1/health` e autenticação com `POST /api/v1/auth/login`, armazenando o Bearer Token JWT na sessão volátil em RAM do `SessionManager` e tratando respostas semânticas de erro da RFC 9457 (401 `AUTH_REQUIRED` e timeouts de rede).
 - **[x] Milestone 12 (Ciclo Operacional Completo de Campo):** Consumo real da fila de ordens atribuídas via `GET /api/v1/me/orders` (`SCR-004`), consulta detalhada com descrição real do defeito via `GET /api/v1/orders/{id}` (`SCR-005`), início de atendimento via `POST /api/v1/orders/{id}/start` com header `Idempotency-Key` (`SCR-006` $\rightarrow$ `SCR-009`) e conclusão de ordem via `POST /api/v1/orders/{id}/complete` enviando justificativa técnica digitada no teclado físico (`SCR-007` $\rightarrow$ `SCR-008` $\rightarrow$ `SCR-009`), com resiliência estrita a quedas de Wi-Fi (`SCR-010`) sem falsos positivos locais (requisito NFR-001).
+- **[x] Milestone 13 (Documentação, OpenAPI e Fechamento):** Exportação formal do contrato OpenAPI v3 final ([openapi-v1.yaml](docs/api/openapi-v1.yaml)), elaboração do relatório técnico e checklist de homologação física de hardware ([hardware-acceptance-checklist.md](docs/hardware-acceptance-checklist.md)), atualização do README.md com diagrama de arquitetura fim a fim e consolidação do repositório para demonstrações técnicas e entrevistas. *(Tag: `v1.2.0-full-system`)*
 
 ---
 
-## 4. Como Executar o Backend Localmente
+## 5. Como Executar o Backend Localmente
 
 ### Pré-requisitos:
 * **Java Development Kit (JDK):** Versão 17 LTS ou superior instalada (`java -version`).
 * **Docker & Docker Compose** (ou MySQL 8 local instalado).
 
-### 4.1 Inicializando o Banco de Dados com Docker Compose (Recomendado):
+### 5.1 Inicializando o Banco de Dados com Docker Compose (Recomendado):
 O projeto inclui um `docker-compose.yml` pré-configurado na raiz para inicializar o MySQL 8.0:
 
 ```powershell
@@ -128,13 +216,13 @@ docker compose stop
 docker compose down
 ```
 
-### 4.2 Inicializando com MySQL Local Manual:
+### 5.2 Inicializando com MySQL Local Manual:
 Caso prefira utilizar um servidor MySQL já instalado na sua máquina:
 ```sql
 CREATE DATABASE IF NOT EXISTS ordens_servico CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 4.3 Variáveis de Ambiente e Configuração:
+### 5.3 Variáveis de Ambiente e Configuração:
 O arquivo `src/main/resources/application.properties` possui fallbacks para desenvolvimento:
 
 ```properties
@@ -144,7 +232,7 @@ spring.datasource.password=${DB_PASSWORD:}
 server.port=9090
 ```
 
-### 4.4 Inicialização da Aplicação:
+### 5.4 Inicialização da Aplicação:
 ```powershell
 # PowerShell (Windows):
 .\mvnw.cmd spring-boot:run
@@ -155,7 +243,7 @@ server.port=9090
 
 ---
 
-## 5. Como Executar a Suíte de Testes Automatizados
+## 6. Como Executar a Suíte de Testes Automatizados
 
 O projeto conta com mais de 30 testes automatizados cobrindo regras de negócio, validações de borda, segurança JWT e controle de acesso anti-IDOR:
 
@@ -175,7 +263,7 @@ O projeto conta com mais de 30 testes automatizados cobrindo regras de negócio,
 
 ---
 
-## 6. Credenciais Iniciais de Teste (Migração Flyway V2)
+## 7. Credenciais Iniciais de Teste (Migração Flyway V2)
 
 Ao iniciar a aplicação pela primeira vez, as migrações Flyway (`V1__create_initial_schema.sql` e `V2__seed_dev_data.sql`) estruturam o banco e inserem usuários de teste com senhas criptografadas em **BCrypt**:
 
@@ -188,24 +276,35 @@ Ao iniciar a aplicação pela primeira vez, as migrações Flyway (`V1__create_i
 
 ---
 
-## 7. Documentação Interativa OpenAPI / Swagger UI
+## 8. Documentação Interativa OpenAPI / Swagger UI
 
 A documentação interativa da API está disponível diretamente no navegador assim que o servidor é iniciado:
 
 * **URL Principal / Redirecionamento Automático:** [`http://localhost:9090/`](http://localhost:9090/)
 * **URL Direta do Swagger UI:** [`http://localhost:9090/swagger-ui.html`](http://localhost:9090/swagger-ui.html)
 * **Especificação OpenAPI em JSON:** [`http://localhost:9090/v3/api-docs`](http://localhost:9090/v3/api-docs)
+* **Contrato OpenAPI v3 em YAML (Estático):** [`docs/api/openapi-v1.yaml`](docs/api/openapi-v1.yaml)
+* **Checklist de Homologação de Hardware:** [`docs/hardware-acceptance-checklist.md`](docs/hardware-acceptance-checklist.md)
+
+<p align="center">
+  <img src="docs/img/swagger-overview.png" alt="Visão Geral do Swagger UI e Endpoints" width="49%">
+  &nbsp;
+  <img src="docs/img/swagger-login-execution.png" alt="Execução Interativa de Login 200 OK" width="49%">
+</p>
+<p align="center">
+  <em>Swagger UI (OpenAPI 3.0): Catálogo operacional com autenticação Bearer JWT (esquerda) e teste transacional com retorno 200 OK e token emitido (direita).</em>
+</p>
 
 ### Como autenticar no Swagger UI:
 1. Acesse o endpoint **`POST /api/v1/auth/login`**.
-2. Execute a requisição com o usuário desejado (ex.: `tec.carlos` e senha `password`).
+2. Execute a requisição com o usuário desejado (ex.: `tec.carlos` ou `admin.sistema` com a senha `password`).
 3. Copie o valor do campo `accessToken` da resposta JSON.
 4. Clique no botão **Authorize** (ícone de cadeado verde no topo direito do Swagger UI).
 5. Cole o token no campo de valor e clique em **Authorize**. Todas as requisições subsequentes incluirão o cabeçalho `Authorization: Bearer <token>`.
 
 ---
 
-## 8. Catálogo Canônico de Endpoints da API
+## 9. Catálogo Canônico de Endpoints da API
 
 | Código | Método | Rota | Perfis Permitidos | Descrição |
 | :---: | :---: | :--- | :---: | :--- |
@@ -225,7 +324,7 @@ A documentação interativa da API está disponível diretamente no navegador as
 
 ---
 
-## 9. Padronização de Erros (RFC 9457)
+## 10. Padronização de Erros (RFC 9457)
 
 Qualquer falha de requisição ou violação de regra de negócio devolve respostas uniformes no padrão canônico RFC 9457:
 
@@ -252,7 +351,7 @@ Qualquer falha de requisição ou violação de regra de negócio devolve respos
 
 ---
 
-## 10. Museu & Galeria de Evolução de Hardware (Bancada Real)
+## 11. Museu & Galeria de Evolução de Hardware (Bancada Real)
 
 Esta galeria documenta a evolução fotográfica real do firmware executando diretamente no **M5Stack CardPuter ADV** durante o ciclo de desenvolvimento:
 
